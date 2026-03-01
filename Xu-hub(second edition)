@@ -1284,6 +1284,8 @@ local function InitMainHub()
 
     initVoidSystem()
 
+local flyjumpConnection -- 用於儲存連線，方便後續管理或切換
+
     -- UI
     local Window = WindUI:CreateWindow({
         Title    = "Xu-hub",
@@ -1648,6 +1650,24 @@ local function InitMainHub()
         Value = { Min = 0, Max = JumpSettings.MaxJumpPower, Default = JumpSettings.JumpPower },
         Callback = function(value) JumpSettings.JumpPower = value; updateJumpPower() end
     })
+
+Tabs.Settings:Toggle({
+    Title = "無限跳躍",
+    Desc = "按住跳躍鍵",
+    Value = false, -- 預設關閉
+    Callback = function(state)
+        if state then
+            -- 開啟邏輯
+            flyjumpConnection = UserInputService.JumpRequest:Connect(function()
+                local humanoid = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end
+            end)
+        else
+            -- 關閉邏輯
+            if flyjumpConnection then flyjumpConnection:Disconnect() end
+        end
+    end
+})
 
     -- Teleport
     Tabs.Teleport:Section({ Title = "停止飛行" })
