@@ -1061,63 +1061,91 @@ local TeleportData = {
     }
 }
 
--- Void Dodge State
+-- ============================================================================
+-- 新型虛空閃避系統（改進版） - 只改Y軸，視角不亂跳
+-- ============================================================================
 local VoidState = {
     Enabled       = false,
     WaitTime      = 0.45,
     VoidTime      = 0.55,
-    TP_Pos        = Vector3.new(0, -200000, 0),
+    VoidY         = -200000,
     IsTeleporting = false
 }
 
-local skillKeywords = {"z","x","c","v","f","expl","blast","beam","laser","slash","punch","impact","boom","shock","earth","fire","ice","hit","rhapsody","fortissimo","symphonic","harmony","tempo","quake","magma","phoenix"}
-local excludeKeywords = {"jump","jumps","jumping","jumpstart","jumpvoice","leap","land","lands","landing","landed","landground","touchdown","fall","falling","fell","落地","drop","落地聲","step","steps","foot","footstep","footsteps","footprint","footprints","run","running","walk","walking","sprint","dash","dashing","roll","rolling","dodge","swim","swimming","splash","water","wave","bubble","ground","grass","sand","wood","floor","hitground","impactground","idle","breath","breathe","eat","drink","emote","chat","talk","die","death","hurt","pain","damage"}
+local skillKeywords = {
+    "z","x","c","v","f","expl","blast","beam","laser","slash",
+    "punch","impact","boom","shock","earth","fire","ice","hit",
+    "rhapsody","fortissimo","symphonic","harmony","tempo","quake","magma","phoenix"
+}
 
-local voidCharacter, voidRoot
+local excludeKeywords = {
+    "jump","jumps","jumping","jumpstart","jumpvoice","leap",
+    "land","lands","landing","landed","landground","touchdown",
+    "fall","falling","fell","落地","drop","落地聲",
+    "step","steps","foot","footstep","footsteps","footprint","footprints",
+    "run","running","walk","walking","sprint",
+    "dash","dashing","roll","rolling","dodge",
+    "swim","swimming","splash","water","wave","bubble",
+    "ground","grass","sand","wood","floor","hitground","impactground",
+    "idle","breath","breathe","eat","drink","emote","chat","talk",
+    "die","death","hurt","pain","damage"
+}
 
-local function teleportToVoid(preSavedCFrame)
-    if VoidState.IsTeleporting or not VoidState.Enabled then return end
-    if not voidRoot or not voidCharacter:FindFirstChild("Humanoid") then return end
-    if voidCharacter.Humanoid.Health <= 0 then return end
+local voidCharacter, voidRoot, rootConnection
 
+local function flashDown()
+    if not voidRoot or VoidState.IsTeleporting then return end
+    if not voidCharacter:FindFirstChild("Humanoid") or voidCharacter.Humanoid.Health <= 0 then return end
+    
     VoidState.IsTeleporting = true
-    local savedCFrame = preSavedCFrame
-
-    local heartbeatConn
-    heartbeatConn = RunService.Heartbeat:Connect(function()
-        if voidRoot then
-            voidRoot.CFrame = CFrame.new(VoidState.TP_Pos)
+    
+    local originalCFrame = voidRoot.CFrame
+    local downPos = Vector3.new(originalCFrame.Position.X, VoidState.VoidY, originalCFrame.Position.Z)
+    
+    local connection
+    connection = RunService.Heartbeat:Connect(function()
+        if voidRoot and VoidState.IsTeleporting then
+            voidRoot.CFrame = CFrame.new(downPos) * originalCFrame.Rotation
             voidRoot.AssemblyLinearVelocity = Vector3.zero
         end
     end)
-
+    
     task.wait(VoidState.VoidTime)
-    if heartbeatConn then heartbeatConn:Disconnect() end
-
+    
+    if connection and connection.Connected then
+        connection:Disconnect()
+    end
+    
     if voidRoot and voidCharacter.Humanoid.Health > 0 then
-        voidRoot.CFrame = savedCFrame + Vector3.new(0, 0.5, 0)
-        voidRoot.AssemblyLinearVelocity  = Vector3.zero
+        voidRoot.CFrame = originalCFrame + Vector3.new(0, 0.5, 0)
+        voidRoot.AssemblyLinearVelocity = Vector3.zero
         voidRoot.AssemblyAngularVelocity = Vector3.zero
     end
-
+    
     task.wait(0.2)
     VoidState.IsTeleporting = false
 end
 
 local function setupRootListener()
+    if rootConnection then rootConnection:Disconnect() end
     if not voidRoot then return end
-    voidRoot.ChildAdded:Connect(function(child)
+    
+    rootConnection = voidRoot.ChildAdded:Connect(function(child)
         if not VoidState.Enabled or VoidState.IsTeleporting then return end
         if not child:IsA("Sound") then return end
+        
         local name = child.Name:lower()
+        
         for _, exclude in ipairs(excludeKeywords) do
             if name:find(exclude) then return end
         end
+        
+        if child.TimeLength < 0.7 or child.Volume < 0.6 then return end
+        
         for _, keyword in ipairs(skillKeywords) do
             if name:find(keyword) then
-                local snapshotCFrame = voidRoot.CFrame
                 task.delay(VoidState.WaitTime, function()
-                    teleportToVoid(snapshotCFrame)
+                    flashDown()
                 end)
                 break
             end
@@ -1127,12 +1155,13 @@ end
 
 local function initVoidSystem()
     voidCharacter = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    voidRoot      = voidCharacter:WaitForChild("HumanoidRootPart")
+    voidRoot = voidCharacter:WaitForChild("HumanoidRootPart")
     task.wait(0.5)
     setupRootListener()
+    
     LocalPlayer.CharacterAdded:Connect(function(newChar)
         voidCharacter = newChar
-        voidRoot      = newChar:WaitForChild("HumanoidRootPart")
+        voidRoot = newChar:WaitForChild("HumanoidRootPart")
         task.wait(0.5)
         setupRootListener()
     end)
@@ -1497,7 +1526,7 @@ local function InitMainHub()
             end
         end
     })
-    Tabs.PVP:Toggle({ Title = "秒殺", Desc = "小心使用 不是百分百成功", Value = false,
+    Tabs.PVP:Toggle({ Title = "秒殺", Desc = "開啟自動躲避敵人技能", Value = false,
         Callback = function(state) VoidState.Enabled = state end
     })
 
