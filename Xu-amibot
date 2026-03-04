@@ -1,4 +1,4 @@
--- Simple Aimbot UI for Blox Fruits (完整整合版 - 移除右鍵轉向 + 選中玩家綠色高亮 + 無限距離)
+-- Simple Aimbot UI for Blox Fruits (完整整合版 - 無限距離 + 綠色高亮 + 可縮小化)
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -18,16 +18,37 @@ Frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 Frame.BorderSizePixel = 0
 Frame.Parent = ScreenGui
 
+-- 標題列 (用來拖曳 + 放按鈕)
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 40)
+TitleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = Frame
+
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 40)
-Title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-Title.Text = "Aimbot"
+Title.Size = UDim2.new(1, -80, 1, 0)
+Title.Position = UDim2.new(0, 12, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "Xu-Aimbot"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 20
-Title.Parent = Frame
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = TitleBar
 
--- 關閉按鈕 X
+-- 最小化按鈕
+local MinimizeButton = Instance.new("TextButton")
+MinimizeButton.Name = "MinBtn"
+MinimizeButton.Size = UDim2.new(0, 30, 0, 30)
+MinimizeButton.Position = UDim2.new(1, -70, 0, 5)
+MinimizeButton.BackgroundColor3 = Color3.fromRGB(50, 150, 220)
+MinimizeButton.Text = "-"
+MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeButton.Font = Enum.Font.GothamBold
+MinimizeButton.TextSize = 20
+MinimizeButton.Parent = TitleBar
+
+-- 關閉按鈕
 local CloseButton = Instance.new("TextButton")
 CloseButton.Size = UDim2.new(0, 30, 0, 30)
 CloseButton.Position = UDim2.new(1, -35, 0, 5)
@@ -36,66 +57,72 @@ CloseButton.Text = "X"
 CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseButton.Font = Enum.Font.GothamBold
 CloseButton.TextSize = 18
-CloseButton.Parent = Frame
+CloseButton.Parent = TitleBar
 
--- Aimbot 開關按鈕
+-- 內容容器 (最小化時隱藏)
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Size = UDim2.new(1, 0, 1, -45)
+ContentFrame.Position = UDim2.new(0, 0, 0, 45)
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.Parent = Frame
+
+-- Aimbot 開關
 local ToggleButton = Instance.new("TextButton")
 ToggleButton.Size = UDim2.new(0.8, 0, 0, 40)
-ToggleButton.Position = UDim2.new(0.1, 0, 0.14, 0)
+ToggleButton.Position = UDim2.new(0.1, 0, 0.02, 0)
 ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 ToggleButton.Text = "Aimbot: OFF"
 ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 ToggleButton.Font = Enum.Font.Gotham
 ToggleButton.TextSize = 16
-ToggleButton.Parent = Frame
+ToggleButton.Parent = ContentFrame
 
--- 模式切換按鈕
+-- 模式切換
 local ModeButton = Instance.new("TextButton")
 ModeButton.Size = UDim2.new(0.8, 0, 0, 35)
-ModeButton.Position = UDim2.new(0.1, 0, 0.28, 0)
+ModeButton.Position = UDim2.new(0.1, 0, 0.18, 0)
 ModeButton.BackgroundColor3 = Color3.fromRGB(70, 70, 110)
 ModeButton.Text = "模式：最近敵人"
 ModeButton.TextColor3 = Color3.fromRGB(220, 220, 255)
 ModeButton.Font = Enum.Font.Gotham
 ModeButton.TextSize = 15
-ModeButton.Parent = Frame
+ModeButton.Parent = ContentFrame
 
--- 狀態標籤
+-- 狀態顯示
 local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(0.8, 0, 0, 30)
-StatusLabel.Position = UDim2.new(0.1, 0, 0.42, 0)
+StatusLabel.Size = UDim2.new(0.8, 0, 0, 35)
+StatusLabel.Position = UDim2.new(0.1, 0, 0.30, 0)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.Text = "已關閉 (快捷鍵 G)"
 StatusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
 StatusLabel.Font = Enum.Font.Gotham
 StatusLabel.TextSize = 14
 StatusLabel.TextWrapped = true
-StatusLabel.Parent = Frame
+StatusLabel.Parent = ContentFrame
 
 -- 玩家列表
 local PlayerListFrame = Instance.new("ScrollingFrame")
-PlayerListFrame.Size = UDim2.new(0.8, 0, 0, 130)
-PlayerListFrame.Position = UDim2.new(0.1, 0, 0.55, 0)
+PlayerListFrame.Size = UDim2.new(0.8, 0, 0, 140)
+PlayerListFrame.Position = UDim2.new(0.1, 0, 0.42, 0)
 PlayerListFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 PlayerListFrame.BorderSizePixel = 0
-PlayerListFrame.ScrollBarThickness = 5
+PlayerListFrame.ScrollBarThickness = 4
 PlayerListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-PlayerListFrame.Parent = Frame
+PlayerListFrame.Parent = ContentFrame
 
 local UIListLayout = Instance.new("UIListLayout")
-UIListLayout.Padding = UDim.new(0, 5)
+UIListLayout.Padding = UDim.new(0, 6)
 UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 UIListLayout.Parent = PlayerListFrame
 
--- 拖曳功能
+-- 拖曳功能 (綁在標題列)
 local dragging, dragInput, dragStart, startPos
-
 local function updateDrag(input)
     local delta = input.Position - dragStart
     Frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 end
 
-Frame.InputBegan:Connect(function(input)
+TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
@@ -108,7 +135,7 @@ Frame.InputBegan:Connect(function(input)
     end
 end)
 
-Frame.InputChanged:Connect(function(input)
+TitleBar.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
         dragInput = input
     end
@@ -120,16 +147,37 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
+-- 最小化/還原功能
+local isMinimized = false
+
+local function toggleMinimize()
+    isMinimized = not isMinimized
+    if isMinimized then
+        Frame.Size = UDim2.new(0, 340, 0, 40)
+        ContentFrame.Visible = false
+        MinimizeButton.Text = "+"
+        MinimizeButton.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
+    else
+        Frame.Size = UDim2.new(0, 340, 0, 300)
+        ContentFrame.Visible = true
+        MinimizeButton.Text = "-"
+        MinimizeButton.BackgroundColor3 = Color3.fromRGB(50, 150, 220)
+    end
+end
+
+MinimizeButton.MouseButton1Click:Connect(toggleMinimize)
+
 -- 核心變數
 local SilentAimEnabled = false
 local UseClosestMode = true
 local SelectedTargetPlayer = nil
 local PredictionEnabled = true
 local PredictionAmount = 0.135
-local maxRange = math.huge          -- 真正無限遠（任何距離的敵人都會被視為「最近」）
+local maxRange = math.huge
+
 local renderConnection
 local PlayersPosition = nil
-local selectedButton = nil  -- 用來追蹤目前綠色的按鈕
+local selectedButton = nil
 
 local function getHRP(model)
     return model and model:FindFirstChild("HumanoidRootPart")
@@ -153,7 +201,7 @@ local function getClosestEnemy()
             local hum = plr.Character:FindFirstChildOfClass("Humanoid")
             if hrp and hum and hum.Health > 0 then
                 local dist = (hrp.Position - lpHRP.Position).Magnitude
-                if dist < minDist then   -- 移除距離上限判斷 → 真正無限遠
+                if dist < minDist then
                     minDist = dist
                     closest = plr
                 end
@@ -163,13 +211,12 @@ local function getClosestEnemy()
     return closest
 end
 
--- 更新玩家列表 + 高亮處理
 local function updatePlayerList()
     for _, child in ipairs(PlayerListFrame:GetChildren()) do
         if child:IsA("TextButton") then child:Destroy() end
     end
     
-    selectedButton = nil  -- 重置高亮
+    selectedButton = nil
     
     local count = 0
     for _, plr in ipairs(Players:GetPlayers()) do
@@ -178,8 +225,8 @@ local function updatePlayerList()
             local hum = plr.Character:FindFirstChildOfClass("Humanoid")
             if hrp and hum and hum.Health > 0 then
                 local btn = Instance.new("TextButton")
-                btn.Size = UDim2.new(1, -10, 0, 30)
-                btn.BackgroundColor3 = Color3.fromRGB(65, 65, 65)  -- 預設灰色
+                btn.Size = UDim2.new(1, -12, 0, 32)
+                btn.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
                 btn.Text = plr.Name .. (plr.Team and " ["..plr.Team.Name.."]" or "")
                 btn.TextColor3 = Color3.fromRGB(255, 255, 255)
                 btn.Font = Enum.Font.Gotham
@@ -187,21 +234,18 @@ local function updatePlayerList()
                 btn.TextXAlignment = Enum.TextXAlignment.Left
                 btn.Parent = PlayerListFrame
                 
-                -- 如果這是目前選中的玩家 → 設為綠色
                 if SelectedTargetPlayer == plr then
                     btn.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
                     selectedButton = btn
                 end
                 
                 btn.MouseButton1Click:Connect(function()
-                    -- 先把舊的還原灰色
                     if selectedButton then
                         selectedButton.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
                     end
-                    
                     SelectedTargetPlayer = plr
                     selectedButton = btn
-                    btn.BackgroundColor3 = Color3.fromRGB(0, 180, 0)  -- 綠色高亮
+                    btn.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
                     
                     StatusLabel.Text = "已選擇： " .. plr.Name .. " (指定模式)"
                     if UseClosestMode then
@@ -214,12 +258,16 @@ local function updatePlayerList()
         end
     end
     
-    PlayerListFrame.CanvasSize = UDim2.new(0, 0, 0, count * 35)
+    PlayerListFrame.CanvasSize = UDim2.new(0, 0, 0, count * 38)
 end
 
 spawn(function()
-    while task.wait(5) and ScreenGui.Parent do
-        updatePlayerList()
+    while task.wait(4) do
+        if ScreenGui.Parent then
+            updatePlayerList()
+        else
+            break
+        end
     end
 end)
 
@@ -227,7 +275,6 @@ updatePlayerList()
 
 local function startAimbot()
     if renderConnection then return end
-    
     renderConnection = RunService.RenderStepped:Connect(function()
         if not SilentAimEnabled then return end
         
@@ -253,7 +300,7 @@ local function stopAimbot()
     PlayersPosition = nil
 end
 
--- 尋找 Mouse 模組（Blox Fruits 常用方式）
+-- 尋找 Mouse 模組
 local MouseModule = game:GetService("ReplicatedStorage"):FindFirstChild("Mouse", true)
 local Mouse = nil
 if MouseModule then
@@ -263,7 +310,7 @@ if MouseModule then
     end
 end
 
--- Heartbeat 更新 Mouse.Hit（Silent Aim 核心）
+-- Silent Aim 核心 - Heartbeat 更新 Mouse.Hit
 RunService.Heartbeat:Connect(function()
     if SilentAimEnabled and PlayersPosition and Mouse then
         pcall(function()
@@ -273,7 +320,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- 按鈕事件 - 開關
+-- 開關按鈕
 ToggleButton.MouseButton1Click:Connect(function()
     SilentAimEnabled = not SilentAimEnabled
     if SilentAimEnabled then
@@ -294,7 +341,6 @@ end)
 ModeButton.MouseButton1Click:Connect(function()
     UseClosestMode = not UseClosestMode
     if UseClosestMode then
-        --SelectedTargetPlayer = nil  -- 可選擇保留已選目標或清除，看你需求
         if selectedButton then
             selectedButton.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
             selectedButton = nil
@@ -321,16 +367,15 @@ CloseButton.MouseButton1Click:Connect(function()
 end)
 
 -- 快捷鍵 G
-UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-    if gameProcessedEvent then return end
-    
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.G then
         SilentAimEnabled = not SilentAimEnabled
         if SilentAimEnabled then
             ToggleButton.Text = "Aimbot: ON"
             ToggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
             local mode = UseClosestMode and "最近敵人" or (SelectedTargetPlayer and SelectedTargetPlayer.Name or "無指定")
-            StatusLabel.Text = "已開啟 (G鍵) - 目標：" .. mode .. 
+            StatusLabel.Text = "已開啟 (G鍵) - 目標：" .. mode
             startAimbot()
         else
             ToggleButton.Text = "Aimbot: OFF"
@@ -344,8 +389,8 @@ end)
 -- 重生處理
 player.CharacterAdded:Connect(function()
     stopAimbot()
-    task.wait(0.5)
+    task.wait(0.6)
     updatePlayerList()
 end)
 
-print("純 Silent Aimbot UI 已載入 - 無限距離模式 / 選中玩家綠色高亮 / G鍵快速開關")
+print("Simple Silent Aimbot UI 已載入 - 無限距離 + 綠色高亮 + 可縮小化 (- / +)")
