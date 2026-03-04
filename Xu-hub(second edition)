@@ -1772,7 +1772,29 @@ Tabs.Settings:Toggle({
             ))()
         end
     })
+local executorName = (identifyexecutor and identifyexecutor()) or "Unknown"
+local isXeno = string.find(executorName, "Xeno") ~= nil
+
+if isXeno then
+    Tabs.Other:Button({
+        Title = "aimbot",
+        Locked = true,
+        LockedTitle = "目前不支援 Xeno 執行器",
+    })
+else
+    Tabs.Other:Button({
+        Title = "aimbot",
+        Callback = function()
+            WindUI:Notify({ Title = "aimbot", Content = "正在啟動腳本...", Duration = 3 })
+            loadstring(game:HttpGet(
+                "https://raw.githubusercontent.com/xuez1025/GUI/refs/heads/main/Xu-aimbot"
+            ))()
+        end
+    })
 end
+
+end
+
 
 WindUI:Popup({
     Title   = "Xu-Hub",
