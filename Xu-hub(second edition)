@@ -105,6 +105,9 @@ local Settings = {
     MaxTargets     = 20,
 }
 
+local CurrentKey = "G"
+local KeyDisabled = false
+
 local character, root
 
 local function setupCharacter(char)
@@ -1622,9 +1625,36 @@ local flyjumpConnection -- 用於儲存連線，方便後續管理或切換
 
     -- Settings
     Tabs.Settings:Section({ Title = "設定" })
-    Tabs.Settings:Keybind({ Title = "快捷鍵", Desc = "可更改", Value = "G",
-        Callback = function(v) Window:SetToggleKey(Enum.KeyCode[v]) end
-    })
+Tabs.Settings:Keybind({ 
+    Title = "快捷鍵", 
+    Desc = "可更改", 
+    Value = CurrentKey,
+    Callback = function(v)
+        CurrentKey = v
+        
+        if not KeyDisabled then
+            Window:SetToggleKey(Enum.KeyCode[v])
+        end
+    end
+})
+
+-- 停用快捷鍵開關
+Tabs.Settings:Toggle({
+    Title = "停用快捷鍵",
+    Desc = "開啟後將禁用快捷鍵",
+    Value = false,
+    Callback = function(state)
+        KeyDisabled = state
+        
+        if state then
+            -- 停用快捷鍵
+            Window:SetToggleKey(nil)
+        else
+            -- 恢復快捷鍵
+            Window:SetToggleKey(Enum.KeyCode[CurrentKey])
+        end
+    end
+})
     Tabs.Settings:Section({ Title = "提高FPS" })
     Tabs.Settings:Button({ Title = "低配模式", Desc = "按一次啟用低配模式",
         Callback = function() ApplyLowGraphics(true) end
@@ -1731,6 +1761,14 @@ Tabs.Settings:Toggle({
             WindUI:Notify({ Title = "FLY GUI", Content = "正在載入 FLY GUI...", Duration = 3 })
             loadstring(game:HttpGet(
                 "https://raw.githubusercontent.com/xuez1025/code/refs/heads/main/FLY%20GUI"
+            ))()
+        end
+    })
+    Tabs.Other:Button({ Title = "秒殺簡易版",
+        Callback = function()
+            WindUI:Notify({ Title = "秒殺簡易版", Content = "可前往設定關閉快捷鍵", Duration = 3 })
+            loadstring(game:HttpGet(
+                "https://raw.githubusercontent.com/xuez1025/GUI/refs/heads/main/Xu-%E7%A7%92%E6%AE%BA"
             ))()
         end
     })
