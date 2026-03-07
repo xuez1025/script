@@ -18,7 +18,7 @@ local playerButtons = {}
 local isMinimized = false
 local lastToggleTick = 0
 local tpRunning = false
-local tpInterval = 0.05 -- 調整傳送頻率
+local tpInterval = 0.0000000000001 -- 調整傳送頻率
 
 local skillKeywords = {
     "z", "x", "c", "v", "f", "expl", "blast", "beam", "laser", "slash",
