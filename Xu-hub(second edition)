@@ -93,7 +93,7 @@ local DETECTION_RADIUS    = 1000
 local hrp, humanoid
 
 local ATTACK_INTERVAL  = 0.01
-local RANGE_MULTIPLIER = 1000
+local RANGE_MULTIPLIER = 3000
 local attackTimer      = 0
 _G.FastAttack = true
 getgenv().AUTO_ATTACK_ENABLED = false
