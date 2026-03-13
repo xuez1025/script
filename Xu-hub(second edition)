@@ -1433,7 +1433,7 @@ local flyjumpConnection -- 用於儲存連線，方便後續管理或切換
                     t.year, t.month, t.day, t.hour, t.min, t.sec))
             end
             if PingSection.SetTitle then
-                PingSection:SetTitle(string.format("Ping: %.0f ms", LocalPlayer:GetNetworkPing() * 1000))
+                PingSection:SetTitle(string.format("Ping: %.0f ms", LocalPlayer:GetNetworkPing() * 3000))
             end
             local now = tick()
             if now - lastTime >= 1 then
@@ -1454,7 +1454,7 @@ local flyjumpConnection -- 用於儲存連線，方便後續管理或切換
         Callback = function(state) _G.FastAttack = state; Settings.AutoClick = state end
     })
     Tabs.PVP:Slider({ Title = "攻擊距離", Desc = "調整攻擊距離",
-        Value = { Min = 0, Max = 1000, Default = 50 },
+        Value = { Min = 0, Max = 3000, Default = 50 },
         Callback = function(value) Settings.Distance = value end
     })
     Tabs.PVP:Toggle({ Title = "Fruit M1", Desc = "開啟或關閉果實自動普攻", Value = false,
