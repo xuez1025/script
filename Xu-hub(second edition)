@@ -1531,7 +1531,7 @@ local flyjumpConnection -- 用於儲存連線，方便後續管理或切換
             end
         end
     })
-    Tabs.PVP:Toggle({ Title = "秒殺", Desc = "開啟自動躲避敵人技能", Value = false,
+    Tabs.PVP:Toggle({ Title = "秒殺", Desc = "開啟或關閉秒殺功能", Value = false,
         Callback = function(state) VoidState.Enabled = state end
     })
 
