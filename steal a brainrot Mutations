@@ -4,7 +4,6 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local VirtualInput = game:GetService("VirtualInputManager")
 local ProximityPromptService = game:GetService("ProximityPromptService")
-
 local player = Players.LocalPlayer
 
 -- ================== 狀態 ==================
@@ -13,17 +12,14 @@ local autoBuyEnabled = false
 local heartbeatConnection
 local autoBuyLoopRunning = false
 local canBuy = false
+local HOLD_DURATION = 0.03  -- 很短，因為 prompt 已設 HoldDuration=0
 
-local HOLD_DURATION = 0.26
-
--- ================== 防擊退 ==================
+-- ================== 防擊退（恢復原本簡單版） ==================
 local function enableAntiKnockback(character)
     local root = character:WaitForChild("HumanoidRootPart")
-
     if heartbeatConnection then
         heartbeatConnection:Disconnect()
     end
-
     heartbeatConnection = RunService.Heartbeat:Connect(function()
         if antiKnockbackEnabled and root.Parent then
             root.AssemblyLinearVelocity = Vector3.zero
@@ -39,6 +35,28 @@ local function disableAntiKnockback()
     end
 end
 
+-- ================== 瞬間購買（只改 HoldDuration，不改距離） ==================
+local function makePromptsInstant()
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") then
+            obj.HoldDuration = 0
+            -- 不加這行：obj.MaxActivationDistance = ... （避免距離變遠）
+            -- 可選：obj.RequiresLineOfSight = false  （如果你想要關閉視線要求，可加；預設不加，保持原樣）
+        end
+    end
+end
+
+-- 監聽新生成的 prompt
+workspace.DescendantAdded:Connect(function(desc)
+    if desc:IsA("ProximityPrompt") then
+        desc.HoldDuration = 0
+        -- 同上，不改距離
+    end
+end)
+
+-- 初始執行
+makePromptsInstant()
+
 -- ================== Auto Buy ==================
 local function holdE()
     VirtualInput:SendKeyEvent(true, "E", false, game)
@@ -49,15 +67,16 @@ end
 local function autoBuyLoop()
     if autoBuyLoopRunning then return end
     autoBuyLoopRunning = true
-
+    
     while autoBuyEnabled do
         if canBuy then
             holdE()
+            task.wait(0.1)  -- 恢復較安全的間隔，避免 spam 太明顯
         else
             task.wait(0.1)
         end
     end
-
+    
     autoBuyLoopRunning = false
 end
 
@@ -73,50 +92,10 @@ frame.Position = UDim2.fromScale(0.5, 0.7) - UDim2.fromOffset(130, 100)
 frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 frame.BorderSizePixel = 0
 frame.Parent = gui
-
--- ===== 可拖動設定 =====
 frame.Active = true
 frame.Draggable = true
 
--- 如果你的 executor 不支援 Draggable，可以改用這段（保險寫法）
---[[
-local dragging = false
-local dragInput, dragStart, startPos
-
-frame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStart = input.Position
-        startPos = frame.Position
-
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-frame.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        frame.Position = UDim2.new(
-            startPos.X.Scale,
-            startPos.X.Offset + delta.X,
-            startPos.Y.Scale,
-            startPos.Y.Offset + delta.Y
-        )
-    end
-end)
-]]
-
--- ===== 關閉按鈕 =====
+-- 關閉按鈕
 local closeButton = Instance.new("TextButton")
 closeButton.Size = UDim2.fromOffset(30, 30)
 closeButton.Position = UDim2.new(1, -35, 0, 5)
@@ -126,7 +105,7 @@ closeButton.BackgroundColor3 = Color3.fromRGB(140, 40, 40)
 closeButton.TextColor3 = Color3.new(1,1,1)
 closeButton.Parent = frame
 
--- ===== Anti 按鈕 =====
+-- Anti 按鈕
 local antiButton = Instance.new("TextButton")
 antiButton.Size = UDim2.fromOffset(240, 45)
 antiButton.Position = UDim2.fromOffset(10, 50)
@@ -145,20 +124,18 @@ end
 
 local function toggleAntiKnockback()
     antiKnockbackEnabled = not antiKnockbackEnabled
-
     if antiKnockbackEnabled and player.Character then
         enableAntiKnockback(player.Character)
     else
         disableAntiKnockback()
     end
-
     updateAntiButton()
 end
 
 antiButton.MouseButton1Click:Connect(toggleAntiKnockback)
 updateAntiButton()
 
--- ===== Auto Buy 按鈕 =====
+-- Auto Buy 按鈕
 local autoButton = Instance.new("TextButton")
 autoButton.Size = UDim2.fromOffset(240, 45)
 autoButton.Position = UDim2.fromOffset(10, 110)
@@ -183,7 +160,7 @@ end
 local function toggleAutoBuy()
     autoBuyEnabled = not autoBuyEnabled
     if autoBuyEnabled then
-        autoBuyLoop()
+        task.spawn(autoBuyLoop)
     end
     updateAutoButton()
 end
@@ -195,6 +172,7 @@ updateAutoButton()
 ProximityPromptService.PromptShown:Connect(function(prompt, inputType)
     if inputType == Enum.ProximityPromptInputType.Keyboard then
         canBuy = true
+        if prompt then prompt.HoldDuration = 0 end  -- 確保當前 prompt 也瞬間
         updateAutoButton()
     end
 end)
@@ -206,26 +184,23 @@ ProximityPromptService.PromptHidden:Connect(function(prompt, inputType)
     end
 end)
 
--- ===== 重置 =====
+-- ================== 關閉 / 重置 ==================
 local function resetAll()
     antiKnockbackEnabled = false
     autoBuyEnabled = false
     canBuy = false
-
     disableAntiKnockback()
     gui.Enabled = false
-
     updateAntiButton()
     updateAutoButton()
 end
 
 closeButton.MouseButton1Click:Connect(resetAll)
 
--- ===== 快捷鍵 =====
+-- ================== 快捷鍵 ==================
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
     if not gui.Enabled then return end
-
     if input.KeyCode == Enum.KeyCode.Q then
         toggleAntiKnockback()
     elseif input.KeyCode == Enum.KeyCode.R then
@@ -233,13 +208,17 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     end
 end)
 
--- ===== 重生處理 =====
+-- ================== 重生處理 ==================
 player.CharacterAdded:Connect(function(character)
     if antiKnockbackEnabled then
         enableAntiKnockback(character)
     end
+    task.wait(1)  -- 等一下再掃 prompt
+    makePromptsInstant()
 end)
 
 if player.Character and antiKnockbackEnabled then
     enableAntiKnockback(player.Character)
 end
+
+gui.Enabled = true
