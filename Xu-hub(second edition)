@@ -1216,34 +1216,59 @@ local function InitMainHub()
         end
     end)
 
-    task.spawn(function()
-        while true do
-            if _G.FastAttack and Settings.AutoClick then
-                local char = LocalPlayer.Character
-                local r    = char and char:FindFirstChild("HumanoidRootPart")
-                if r then
-                    local targets = {}
-                    for _, folder in ipairs({ EnemiesFolder, CharactersFolder }) do
-                        for _, obj in ipairs(folder:GetChildren()) do
-                            if obj ~= char and IsAlive(obj) then
-                                local head = obj:FindFirstChild("Head")
-                                if head and (head.Position - r.Position).Magnitude <= Settings.Distance then
-                                    table.insert(targets, { obj, head })
-                                    if #targets >= Settings.MaxTargets then break end
-                                end
-                            end
-                        end
-                        if #targets >= Settings.MaxTargets then break end
-                    end
-                    if #targets > 0 then
-                        RegisterAttack:FireServer(0)
-                        RegisterHit:FireServer(targets[1][2], targets)
-                    end
+local function PerformAttack()
+    if not _G.FastAttack then return end
+    local char = LocalPlayer.Character
+    local r    = char and char:FindFirstChild("HumanoidRootPart")
+    if not r then return end
+    local targets = {}
+    for _, folder in ipairs({ EnemiesFolder, CharactersFolder }) do
+        for _, obj in ipairs(folder:GetChildren()) do
+            if obj ~= char and IsAlive(obj) then
+                local head = obj:FindFirstChild("Head")
+                if head and (head.Position - r.Position).Magnitude <= Settings.Distance then
+                    table.insert(targets, { obj, head })
+                    if #targets >= Settings.MaxTargets then break end
                 end
             end
-            task.wait(Settings.AttackInterval)
+        end
+        if #targets >= Settings.MaxTargets then break end
+    end
+    if #targets > 0 then
+        RegisterAttack:FireServer(0)
+        RegisterHit:FireServer(targets[1][2], targets)
+    end
+end
+
+-- 手動攻擊連線（關閉自動攻擊時啟用）
+local manualAttackConn = nil
+
+local function startManualAttack()
+    if manualAttackConn then return end
+    manualAttackConn = UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            PerformAttack()
         end
     end)
+end
+
+local function stopManualAttack()
+    if manualAttackConn then
+        manualAttackConn:Disconnect()
+        manualAttackConn = nil
+    end
+end
+
+-- 自動攻擊主迴圈
+task.spawn(function()
+    while true do
+        if _G.FastAttack and Settings.AutoClick then
+            PerformAttack()
+        end
+        task.wait(Settings.AttackInterval)
+    end
+end)
 
     task.spawn(function()
         while task.wait(CHECK_INTERVAL) do
@@ -1450,9 +1475,16 @@ local flyjumpConnection -- 用於儲存連線，方便後續管理或切換
 
     -- PVP
     Tabs.PVP:Section({ Title = "PVP" })
-    Tabs.PVP:Toggle({ Title = "自動攻擊", Desc = "FastAttack 開關", Value = true,
-        Callback = function(state) _G.FastAttack = state; Settings.AutoClick = state end
-    })
+Tabs.PVP:Toggle({ Title = "自動攻擊", Desc = "開啟:自動攻擊/關閉:手動攻擊", Value = true,
+    Callback = function(state)
+        Settings.AutoClick = state
+        if state then
+            stopManualAttack()
+        else
+            startManualAttack()
+        end
+    end
+})
     Tabs.PVP:Slider({ Title = "攻擊距離", Desc = "調整攻擊距離",
         Value = { Min = 0, Max = 3000, Default = 50 },
         Callback = function(value) Settings.Distance = value end
@@ -1531,7 +1563,7 @@ local flyjumpConnection -- 用於儲存連線，方便後續管理或切換
             end
         end
     })
-    Tabs.PVP:Toggle({ Title = "秒殺", Desc = "開啟或關閉秒殺功能", Value = false,
+    Tabs.PVP:Toggle({ Title = "秒殺", Desc = "開啟自動躲避敵人技能", Value = false,
         Callback = function(state) VoidState.Enabled = state end
     })
 
