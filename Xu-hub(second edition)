@@ -222,6 +222,51 @@ local function setupPlayerESP(p)
     if ESP_ENABLED and p.Character then createESP(p) end
 end
 
+--// LocalScript
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+-- =============================================
+--               核心邏輯部分（不依賴 UI）
+-- =============================================
+
+-- 預設配置（全域保存）
+if not _G.Config then
+    _G.Config = {}
+end
+if not _G.Config.Dash then
+    _G.Config.Dash = {
+        Enabled = false,
+        DashDistance = 50
+    }
+end
+
+local function UpdateDash()
+    local character = player.Character
+    if not character then return end
+    
+    if _G.Config.Dash.Enabled then
+        character:SetAttribute("DashLength", _G.Config.Dash.DashDistance)
+        character:SetAttribute("DashLengthAir", _G.Config.Dash.DashDistance)
+    else
+        character:SetAttribute("DashLength", 1)
+        character:SetAttribute("DashLengthAir", 1)
+    end
+end
+
+-- 角色重生時重新套用
+local function onCharacterAdded(char)
+    task.wait(0.1)   -- 等待屬性系統初始化
+    UpdateDash()
+end
+
+player.CharacterAdded:Connect(onCharacterAdded)
+
+-- 初次載入時也執行一次
+if player.Character then
+    task.spawn(onCharacterAdded, player.Character)
+end
+
 -- Noclip
 local function setNoclipState(state)
     NOCLIP_ENABLED = state
@@ -1712,6 +1757,32 @@ Tabs.Settings:Toggle({
         Value = { Min = 0, Max = JumpSettings.MaxJumpPower, Default = JumpSettings.JumpPower },
         Callback = function(value) JumpSettings.JumpPower = value; updateJumpPower() end
     })
+Tabs.Settings:Toggle({
+    Title = "衝刺開關",
+    Desc = "開啟或關閉衝刺功能",
+    Value = _G.Config.Dash.Enabled,
+    Callback = function(state)
+        _G.Config.Dash.Enabled = state
+        UpdateDash()
+    end
+})
+
+Tabs.Settings:Slider({
+    Title = "衝刺距離",
+    Desc = "距離調整(0~1000)",
+    Value = {
+        Min = 0,
+        Max = 1000,
+        Default = _G.Config.Dash.DashDistance,
+        Rounding = 1   -- 整數（可依需求改成 0.1 等）
+    },
+    Callback = function(value)
+        _G.Config.Dash.DashDistance = value
+        if _G.Config.Dash.Enabled then
+            UpdateDash()
+        end
+    end
+})
 
 Tabs.Settings:Toggle({
     Title = "無限跳躍",
