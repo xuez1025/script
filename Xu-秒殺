@@ -2,15 +2,16 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+
 local player = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
 -- ── 核心變數 ───────────────────────────────────────
 _G.YFlash_Enabled = false
 _G.YFlash_ShouldListen = true
-_G.WaitTime = 0.45
+_G.WaitTime = 0.45          -- 技能音效出現後等待多久才閃
 _G.VoidY = -200000
-_G.FlashDuration = 0.55
+_G.FlashDuration = 0.55     -- 閃避持續時間
 
 local selectedPlayer = nil
 local guiEnabled = true
@@ -18,7 +19,7 @@ local playerButtons = {}
 local isMinimized = false
 local lastToggleTick = 0
 local tpRunning = false
-local tpInterval = 0.0000000000001 -- 調整傳送頻率
+local tpInterval = 0.0000000000001
 
 local skillKeywords = {
     "z", "x", "c", "v", "f", "expl", "blast", "beam", "laser", "slash",
@@ -51,7 +52,7 @@ MainFrame.Size = UDim2.new(0, 300, 0, 520)
 MainFrame.Position = UDim2.new(0, 30, 0, 180)
 MainFrame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 MainFrame.Active = true
-MainFrame.Draggable = true -- 舊版簡化拖曳
+MainFrame.Draggable = true
 MainFrame.Parent = ScreenGui
 Instance.new("UICorner", MainFrame)
 
@@ -114,35 +115,33 @@ YFlashToggle.TextSize = 18
 YFlashToggle.Parent = MainFrame
 Instance.new("UICorner", YFlashToggle)
 
--- ── 核心功能邏輯 ─────────────────────────────────────────
+-- ── 核心功能 ────────────────────────────────────────────────
 
--- 更新 UI 狀態顯示
 local function updateYFlashUI()
     if _G.YFlash_Enabled then
         YFlashToggle.Text = "開啟 (ON)"
         YFlashToggle.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
-        YFlashToggle.TextColor3 = Color3.new(1, 1, 1)
+        YFlashToggle.TextColor3 = Color3.new(1,1,1)
     else
         YFlashToggle.Text = "關閉 (OFF)"
         YFlashToggle.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-        YFlashToggle.TextColor3 = Color3.new(1, 1, 1)
+        YFlashToggle.TextColor3 = Color3.new(1,1,1)
     end
 end
 
--- 統一的切換函數 (修正快捷鍵對不上的主因)
 local function toggleYFlash()
     if not guiEnabled or not _G.YFlash_ShouldListen then return end
-    if tick() - lastToggleTick < 0.25 then return end -- 防抖動
+    if tick() - lastToggleTick < 0.25 then return end
     lastToggleTick = tick()
     
     _G.YFlash_Enabled = not _G.YFlash_Enabled
     updateYFlashUI()
 end
 
--- 玩家清單刷新
 local function refreshPlayers()
     for _, b in pairs(playerButtons) do b:Destroy() end
     playerButtons = {}
+    
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= player then
             local btn = Instance.new("TextButton")
@@ -151,19 +150,22 @@ local function refreshPlayers()
             btn.BackgroundColor3 = (plr == selectedPlayer) and Color3.fromRGB(80,180,80) or Color3.fromRGB(120,120,120)
             btn.Parent = ScrollingFrame
             Instance.new("UICorner", btn)
+            
             btn.MouseButton1Click:Connect(function()
                 selectedPlayer = plr
-                refreshPlayers() -- 重新整理顏色
+                refreshPlayers()
             end)
+            
             playerButtons[plr] = btn
         end
     end
-    ScrollingFrame.CanvasSize = UDim2.new(0,0,0,UIListLayout.AbsoluteContentSize.Y + 10)
+    
+    ScrollingFrame.CanvasSize = UDim2.new(0,0,0, UIListLayout.AbsoluteContentSize.Y + 10)
 end
 
--- 傳送邏輯
 local function teleportToPlayer()
     if not guiEnabled or not selectedPlayer or not selectedPlayer.Character then return end
+    
     local myHRP = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     local targetHRP = selectedPlayer.Character:FindFirstChild("HumanoidRootPart")
     
@@ -175,10 +177,10 @@ local function teleportToPlayer()
     end
 end
 
--- 持續傳送協程
 local function startContinuousTP()
     if tpRunning then return end
     tpRunning = true
+    
     task.spawn(function()
         while UserInputService:IsKeyDown(Enum.KeyCode.G) and guiEnabled and selectedPlayer do
             teleportToPlayer()
@@ -188,51 +190,85 @@ local function startContinuousTP()
     end)
 end
 
--- ── Y軸閃避監聽器 ──────────────────────────────────────────
+-- ── Y-Flash 核心邏輯 ────────────────────────────────────────
 local RootConnection
+
+local function processSound(Root, sound)
+    if not _G.YFlash_Enabled then return end
+    
+    local name = sound.Name:lower()
+    
+    -- 排除關鍵字
+    for _, kw in ipairs(excludeKeywords) do
+        if name:find(kw) then return end
+    end
+    
+    -- 基本過濾：太短或音量太小不處理
+    if sound.TimeLength <= 0 or sound.TimeLength < 0.7 or sound.Volume < 0.5 then
+        return
+    end
+    
+    -- 判斷是否為技能音效
+    local isSkill = false
+    for _, kw in ipairs(skillKeywords) do
+        if name:find(kw) then
+            isSkill = true
+            break
+        end
+    end
+    
+    if not isSkill then return end
+    
+    -- 執行閃避
+    task.spawn(function()
+        task.wait(_G.WaitTime)
+        if not _G.YFlash_Enabled or not Root.Parent then return end
+        
+        local originalCFrame = Root.CFrame
+        local downPos = Vector3.new(originalCFrame.Position.X, _G.VoidY, originalCFrame.Position.Z)
+        
+        local heartbeatConn = RunService.Heartbeat:Connect(function()
+            Root.CFrame = CFrame.new(downPos) * originalCFrame.Rotation
+        end)
+        
+        task.wait(_G.FlashDuration)
+        heartbeatConn:Disconnect()
+        
+        if Root.Parent then
+            Root.CFrame = originalCFrame
+        end
+    end)
+end
+
 local function setupYFlashListener()
     if RootConnection then RootConnection:Disconnect() end
+    
     local Character = player.Character or player.CharacterAdded:Wait()
     local Root = Character:WaitForChild("HumanoidRootPart", 10)
     if not Root then return end
     
-    RootConnection = Root.ChildAdded:Connect(function(child)
-        if not _G.YFlash_Enabled or not child:IsA("Sound") then return end
-        
-        local name = child.Name:lower()
-        for _, kw in ipairs(excludeKeywords) do if name:find(kw) then return end end
-        if child.TimeLength < 0.7 or child.Volume < 0.5 then return end
-        
-        local isSkill = false
-        for _, kw in ipairs(skillKeywords) do
-            if name:find(kw) then isSkill = true break end
-        end
-        
-        if isSkill then
+    -- 1. 立即掃描已經存在的 Sound（解決第一次沒反應）
+    for _, child in ipairs(Root:GetChildren()) do
+        if child:IsA("Sound") then
             task.spawn(function()
-                task.wait(_G.WaitTime)
-                if not _G.YFlash_Enabled or not Root.Parent then return end
-                
-                local originalCFrame = Root.CFrame
-                local downPos = Vector3.new(originalCFrame.Position.X, _G.VoidY, originalCFrame.Position.Z)
-                
-                local heartbeat = RunService.Heartbeat:Connect(function()
-                    Root.CFrame = CFrame.new(downPos) * originalCFrame.Rotation
-                end)
-                
-                task.wait(_G.FlashDuration)
-                heartbeat:Disconnect()
-                if Root.Parent then Root.CFrame = originalCFrame end
+                processSound(Root, child)
+            end)
+        end
+    end
+    
+    -- 2. 監聽之後新產生的 Sound
+    RootConnection = Root.ChildAdded:Connect(function(child)
+        if child:IsA("Sound") then
+            task.spawn(function()
+                processSound(Root, child)
             end)
         end
     end)
 end
 
--- ── 事件綁定 ─────────────────────────────────────────────
-
--- 鍵盤輸入監控
-UserInputService.InputBegan:Connect(function(input, gp)
-    if gp then return end -- 聊天中不觸發
+-- ── 事件綁定 ────────────────────────────────────────────────
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
     
     if input.KeyCode == Enum.KeyCode.LeftAlt or input.KeyCode == Enum.KeyCode.RightAlt then
         toggleYFlash()
@@ -250,6 +286,7 @@ MinimizeButton.MouseButton1Click:Connect(function()
     TeleportButton.Visible = not isMinimized
     SectionLabel.Visible = not isMinimized
     YFlashToggle.Visible = not isMinimized
+    
     MainFrame.Size = isMinimized and UDim2.new(0,300,0,50) or UDim2.new(0,300,0,520)
     MinimizeButton.Text = isMinimized and "+" or "-"
 end)
@@ -263,6 +300,7 @@ end)
 
 Players.PlayerAdded:Connect(refreshPlayers)
 Players.PlayerRemoving:Connect(refreshPlayers)
+
 player.CharacterAdded:Connect(function()
     task.wait(1)
     setupYFlashListener()
@@ -273,4 +311,4 @@ refreshPlayers()
 setupYFlashListener()
 updateYFlashUI()
 
-print("Xu-秒殺系統整合完畢 | Alt: 開關 | G: 持續TP")
+print("Xu-秒殺系統 v2 載入完成 | Alt: 開關秒殺 | G: 持續TP")
