@@ -1530,6 +1530,25 @@ Tabs.PVP:Toggle({ Title = "自動攻擊", Desc = "開啟:自動攻擊/關閉:手
         end
     end
 })
+Tabs.PVP:Button({
+    Title = "刷新自動攻擊",
+    Desc = "重置攻擊系統",
+    Callback = function()
+        -- 停止當前的自動攻擊
+        _G.FastAttack = false
+        task.wait(0.2)
+        
+        -- 重新啟動自動攻擊
+        _G.FastAttack = true
+        
+        -- 通知玩家
+        WindUI:Notify({
+            Title = "自動攻擊",
+            Content = "已成功刷新自動攻擊",
+            Duration = 3
+        })
+    end
+})
     Tabs.PVP:Slider({ Title = "攻擊距離", Desc = "調整攻擊距離",
         Value = { Min = 0, Max = 3000, Default = 50 },
         Callback = function(value) Settings.Distance = value end
@@ -1608,7 +1627,7 @@ Tabs.PVP:Toggle({ Title = "自動攻擊", Desc = "開啟:自動攻擊/關閉:手
             end
         end
     })
-    Tabs.PVP:Toggle({ Title = "秒殺", Desc = "開啟自動躲避敵人技能", Value = false,
+    Tabs.PVP:Toggle({ Title = "秒殺", Desc = "開啟秒殺功能", Value = false,
         Callback = function(state) VoidState.Enabled = state end
     })
 
