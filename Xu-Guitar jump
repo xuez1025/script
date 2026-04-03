@@ -1,0 +1,185 @@
+--// Services
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local Player = Players.LocalPlayer
+local Character = Player.Character or Player.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
+
+--// GUI 建立
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Parent = game.CoreGui
+
+local GUIEnabled = true -- 控制整個GUI存在與否
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 220, 0, 160)
+MainFrame.Position = UDim2.new(0.5, -110, 0.5, -80)
+MainFrame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+MainFrame.Parent = ScreenGui
+
+--// 拖動功能
+local dragging, dragInput, dragStart, startPos
+MainFrame.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = MainFrame.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+MainFrame.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement then
+		dragInput = input
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if input == dragInput and dragging then
+		local delta = input.Position - dragStart
+		MainFrame.Position = UDim2.new(
+			startPos.X.Scale,
+			startPos.X.Offset + delta.X,
+			startPos.Y.Scale,
+			startPos.Y.Offset + delta.Y
+		)
+	end
+end)
+
+--// 標題
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1,0,0,25)
+Title.Text = "Xu-Guitar jump"
+Title.BackgroundColor3 = Color3.fromRGB(50,50,50)
+Title.TextColor3 = Color3.new(1,1,1)
+Title.Parent = MainFrame
+
+--// 關閉按鈕
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0,25,0,25)
+CloseBtn.Position = UDim2.new(1,-25,0,0)
+CloseBtn.Text = "X"
+CloseBtn.Parent = MainFrame
+
+--// 縮小/放大按鈕
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size = UDim2.new(0,25,0,25)
+MinBtn.Position = UDim2.new(1,-50,0,0)
+MinBtn.Text = "-"
+MinBtn.Parent = MainFrame
+
+--// 功能按鈕
+local GuitarBtn = Instance.new("TextButton")
+GuitarBtn.Size = UDim2.new(0.75,0,0,35)
+GuitarBtn.Position = UDim2.new(0.125,0,0.35,-17)
+GuitarBtn.Text = "Guitar Jump: OFF"
+GuitarBtn.Parent = MainFrame
+
+local FlyBtn = Instance.new("TextButton")
+FlyBtn.Size = UDim2.new(0.75,0,0,35)
+FlyBtn.Position = UDim2.new(0.125,0,0.65,-17)
+FlyBtn.Text = "InfJump: OFF"
+FlyBtn.Parent = MainFrame
+
+--// 縮小控制（改成一行）
+local minimized = false
+MinBtn.MouseButton1Click:Connect(function()
+	minimized = not minimized
+	if minimized then
+		-- 縮小成一行
+		MainFrame.Size = UDim2.new(0, 200, 0, 25)
+		-- 隱藏按鈕
+		GuitarBtn.Visible = false
+		FlyBtn.Visible = false
+	else
+		-- 還原原始大小
+		MainFrame.Size = UDim2.new(0, 220, 0, 160)
+		GuitarBtn.Visible = true
+		FlyBtn.Visible = true
+	end
+end)
+
+--// 狀態變數
+local GuitarEnabled = false
+local FlyEnabled = false
+local flyjumpConnection
+
+--// 吉他跳控制
+local function SetGuitar(state)
+	GuitarEnabled = state
+	GuitarBtn.Text = state and "Guitar Jump: ON" or "Guitar Jump: OFF"
+	if not state and Humanoid then
+		Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+		Humanoid.PlatformStand = false
+	end
+end
+
+GuitarBtn.MouseButton1Click:Connect(function()
+	SetGuitar(not GuitarEnabled)
+end)
+
+--// 無限跳控制
+local function enableFlyJump()
+	if flyjumpConnection then flyjumpConnection:Disconnect() end
+
+	flyjumpConnection = UserInputService.JumpRequest:Connect(function()
+		if not FlyEnabled then return end
+		if Humanoid then
+			Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end)
+end
+
+local function disableFlyJump()
+	if flyjumpConnection then
+		flyjumpConnection:Disconnect()
+		flyjumpConnection = nil
+	end
+end
+
+FlyBtn.MouseButton1Click:Connect(function()
+	FlyEnabled = not FlyEnabled
+	FlyBtn.Text = FlyEnabled and "InfJump: ON" or "InfJump: OFF"
+	if FlyEnabled then
+		enableFlyJump()
+	else
+		disableFlyJump()
+	end
+end)
+
+--// 快捷鍵 G
+UserInputService.InputBegan:Connect(function(input, processed)
+	if not processed and GUIEnabled and input.KeyCode == Enum.KeyCode.G then
+		SetGuitar(not GuitarEnabled)
+	end
+end)
+
+--// 吉他跳持續效果
+RunService.RenderStepped:Connect(function()
+	if GuitarEnabled and Humanoid then
+		Humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+		Humanoid.PlatformStand = false
+		Humanoid:Move(Humanoid.MoveDirection, true)
+	end
+end)
+
+--// 關閉整個GUI
+CloseBtn.MouseButton1Click:Connect(function()
+	GUIEnabled = false
+	SetGuitar(false)
+	FlyEnabled = false
+	disableFlyJump()
+	ScreenGui:Destroy()
+end)
+
+--// 重生後自動綁定 Humanoid
+Player.CharacterAdded:Connect(function(char)
+	Character = char
+	Humanoid = char:WaitForChild("Humanoid")
+end)
