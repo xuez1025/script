@@ -1434,18 +1434,24 @@ local flyjumpConnection -- 用於儲存連線，方便後續管理或切換
     -- Server
     Tabs.Server:Section({ Title = "Server" })
     Tabs.Server:Button({ Title = "切換伺服器",
+		        Locked = true,
+        LockedTitle = "coming back",
         Callback = function()
             task.spawn(function() pcall(function() TeleportService:Teleport(PlaceId, LocalPlayer) end) end)
             WindUI:Notify({ Title = "傳送中", Content = "正在切換伺服器...", Duration = 3 })
         end
     })
     Tabs.Server:Button({ Title = "重進伺服器",
+	        Locked = true,
+        LockedTitle = "coming back",
         Callback = function()
             task.spawn(function() TeleportService:Teleport(PlaceId, LocalPlayer) end)
             WindUI:Notify({ Title = "重進伺服器", Content = "你已經重新進入同一伺服器", Duration = 3 })
         end
     })
     Tabs.Server:Button({ Title = "加入少人伺服器",
+		        Locked = true,
+        LockedTitle = "coming back",
         Callback = function()
             task.spawn(function()
                 local AllServers = {}
@@ -1534,17 +1540,43 @@ Tabs.PVP:Button({
     Title = "刷新自動攻擊",
     Desc = "重置攻擊系統",
     Callback = function()
-        -- 停止當前的自動攻擊
+        -- 停止所有攻擊
         _G.FastAttack = false
-        task.wait(0.2)
-        
-        -- 重新啟動自動攻擊
+        getgenv().AUTO_ATTACK_ENABLED = false
+        if manualAttackConn then
+            manualAttackConn:Disconnect()
+            manualAttackConn = nil
+        end
+        attackTimer = 0
+
+        task.wait(0.3)
+
+        -- 重新套用角色與目標參考
+        local char = LocalPlayer.Character
+        if char then
+            setupCharacter(char)
+        end
+
+        -- 重新掃描 Enemies / Characters 資料夾
+        EnemiesFolder    = workspace:WaitForChild("Enemies")
+        CharactersFolder = workspace:WaitForChild("Characters")
+
+        -- 恢復攻擊狀態
         _G.FastAttack = true
-        
-        -- 通知玩家
+
+        -- 若原本 Fruit M1 是開啟的，同步恢復
+        if getgenv().AUTO_ATTACK_ENABLED then
+            getgenv().AUTO_ATTACK_ENABLED = true
+        end
+
+        -- 若原本手動攻擊是開啟的，重新連線
+        if not Settings.AutoClick then
+            startManualAttack()
+        end
+
         WindUI:Notify({
             Title = "自動攻擊",
-            Content = "已成功刷新自動攻擊",
+            Content = "已成功刷新整個攻擊核心",
             Duration = 3
         })
     end
