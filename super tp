@@ -1,0 +1,117 @@
+local player = game.Players.LocalPlayer
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local camera = workspace.CurrentCamera
+
+-- ===== GUI =====
+local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+gui.Name = "TeleportGUI"
+gui.ResetOnSpawn = false
+
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, 250, 0, 120)
+frame.Position = UDim2.new(0.3, 0, 0.3, 0)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.Active = true
+frame.Draggable = true
+frame.BorderSizePixel = 0
+
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1, 0, 0, 30)
+title.Text = "Xu-super TP"
+title.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+title.TextColor3 = Color3.new(1, 1, 1)
+title.Font = Enum.Font.SourceSansBold
+title.TextSize = 16
+
+local status = Instance.new("TextLabel", frame)
+status.Size = UDim2.new(1, 0, 0, 30)
+status.Position = UDim2.new(0, 0, 0, 40)
+status.BackgroundTransparency = 1
+status.Text = "OFF"
+status.TextColor3 = Color3.new(1, 0, 0)
+status.TextSize = 18
+status.Font = Enum.Font.SourceSansBold
+
+local closeBtn = Instance.new("TextButton", frame)
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -30, 0, 0)
+closeBtn.Text = "X"
+closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+closeBtn.TextColor3 = Color3.new(1, 1, 1)
+
+local miniBtn = Instance.new("TextButton", frame)
+miniBtn.Size = UDim2.new(0, 30, 0, 30)
+miniBtn.Position = UDim2.new(1, -60, 0, 0)
+miniBtn.Text = "-"
+miniBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+miniBtn.TextColor3 = Color3.new(1, 1, 1)
+
+local enabled = true
+local holdingG = false
+local minimized = false
+local range = 100          -- 左右移動距離（可自行調整）
+local side = 1
+
+closeBtn.MouseButton1Click:Connect(function()
+    gui.Enabled = false
+    enabled = false
+end)
+
+miniBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    for _, v in pairs(frame:GetChildren()) do
+        if v ~= title and v ~= closeBtn and v ~= miniBtn then
+            v.Visible = not minimized
+        end
+    end
+    frame.Size = minimized and UDim2.new(0, 250, 0, 30) or UDim2.new(0, 250, 0, 120)
+end)
+
+UIS.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed or not enabled then return end
+    if input.KeyCode == Enum.KeyCode.G then
+        holdingG = true
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.G then
+        holdingG = false
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if not enabled then return end
+  
+    local character = player.Character
+    if not character then return end
+  
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    if holdingG then
+        status.Text = "ON"
+        status.TextColor3 = Color3.new(0, 1, 0)
+       
+        local currentPos = hrp.Position
+        local currentCFrame = hrp.CFrame          -- 保留原本的完整面向
+        
+        side = -side
+       
+        local rightVector = camera.CFrame.RightVector
+        local offset = rightVector * (side * range)
+       
+        local newPos = Vector3.new(
+            currentPos.X + offset.X,
+            currentPos.Y,
+            currentPos.Z + offset.Z
+        )
+        
+        hrp.CFrame = CFrame.new(newPos) * currentCFrame.Rotation
+        
+    else
+        status.Text = "OFF"
+        status.TextColor3 = Color3.new(1, 0, 0)
+    end
+end)
