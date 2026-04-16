@@ -1,3 +1,4 @@
+--// Services
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -9,21 +10,75 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local Lighting          = game:GetService("Lighting")
 local TweenService      = game:GetService("TweenService")
 
+--// Local Variables
 local LocalPlayer = Players.LocalPlayer
 local PlaceId     = game.PlaceId
+local JobId       = game.JobId
 local Camera      = workspace.CurrentCamera
 local Terrain     = workspace:FindFirstChildWhichIsA("Terrain")
 
+--// Remote
 local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
+local ServerBrowserRemote = ReplicatedStorage:WaitForChild("__ServerBrowser")
 
-local currentPlaceId = game.PlaceId
-local World1 = currentPlaceId == 2753915549 or currentPlaceId == 85211729168715
-local World2 = currentPlaceId == 4442272183 or currentPlaceId == 79091703265657
-local World3 = currentPlaceId == 7449423635 or currentPlaceId == 100117331123089
+--// World Check
+local World1 = PlaceId == 2753915549 or PlaceId == 85211729168715
+local World2 = PlaceId == 4442272183 or PlaceId == 79091703265657
+local World3 = PlaceId == 7449423635 or PlaceId == 100117331123089
 
+--// WindUI
 local WindUI = loadstring(game:HttpGet(
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
 ))()
+
+local ServerCore = {}
+
+-- 1. 跳轉到指定伺服器
+function ServerCore:TeleportToServer(jobId)
+    if not jobId or jobId == JobId then return end
+    
+    task.spawn(function()
+        pcall(function()
+            ServerBrowserRemote:InvokeServer("teleport", jobId)
+        end)
+    end)
+end
+
+function ServerCore:FindAndHop(mode)
+    task.spawn(function()
+        local success, response = pcall(function()
+            return HttpService:JSONDecode(game:HttpGet(
+                "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+            ))
+        end)
+
+        if not (success and response and response.data) then
+            return
+        end
+
+        local validServers = {}
+
+        for _, server in ipairs(response.data) do
+            if server.id ~= JobId and server.playing < server.maxPlayers then
+                table.insert(validServers, server.id)
+            end
+        end
+
+        if #validServers == 0 then
+            return
+        end
+
+        local targetJobId
+        if mode == "small" then
+            targetJobId = validServers[1]
+        else
+            -- 隨機跳服
+            targetJobId = validServers[math.random(1, #validServers)]
+        end
+
+        self:TeleportToServer(targetJobId)
+    end)
+end
 
 _G.Config = _G.Config or {}
 _G.Config.FastAttack = _G.Config.FastAttack or {
@@ -1518,49 +1573,32 @@ end)
 
     -- Server
     Tabs.Server:Section({ Title = "Server" })
-    Tabs.Server:Button({ Title = "切換伺服器",
-		        Locked = true,
-        LockedTitle = "coming back",
-        Callback = function()
-            task.spawn(function() pcall(function() TeleportService:Teleport(PlaceId, LocalPlayer) end) end)
-            WindUI:Notify({ Title = "傳送中", Content = "正在切換伺服器...", Duration = 3 })
-        end
-    })
-    Tabs.Server:Button({ Title = "重進伺服器",
-	        Locked = true,
-        LockedTitle = "coming back",
-        Callback = function()
-            task.spawn(function() TeleportService:Teleport(PlaceId, LocalPlayer) end)
-            WindUI:Notify({ Title = "重進伺服器", Content = "你已經重新進入同一伺服器", Duration = 3 })
-        end
-    })
-    Tabs.Server:Button({ Title = "加入少人伺服器",
-		        Locked = true,
-        LockedTitle = "coming back",
-        Callback = function()
-            task.spawn(function()
-                local AllServers = {}
-                local success, servers = pcall(function()
-                    return HttpService:JSONDecode(game:HttpGet(
-                        "https://games.roblox.com/v1/games/"..PlaceId.."/servers/Public?sortOrder=Asc&limit=100"
-                    ))
-                end)
-                if success and servers and servers.data then
-                    for _, s in ipairs(servers.data) do
-                        if s.id ~= game.JobId and s.playing < s.maxPlayers then
-                            table.insert(AllServers, s.id)
-                        end
-                    end
-                end
-                if #AllServers > 0 then
-                    TeleportService:TeleportToPlaceInstance(
-                        PlaceId, AllServers[math.random(1, #AllServers)], LocalPlayer
-                    )
-                end
-            end)
-            WindUI:Notify({ Title = "傳送到少人伺服器", Content = "正在尋找玩家較少的伺服器...", Duration = 3 })
-        end
-    })
+-- 切換伺服器 (隨機)
+Tabs.Server:Button({ 
+    Title = "切換伺服器",
+    Callback = function()
+        ServerCore:FindAndHop("random")
+        WindUI:Notify({ Title = "傳送中", Content = "正在尋找新伺服器...", Duration = 3 })
+    end
+})
+
+-- 重進伺服器 (當前伺服器)
+Tabs.Server:Button({ 
+    Title = "重進伺服器",
+    Callback = function()
+        ServerCore:TeleportToServer(game.JobId)
+        WindUI:Notify({ Title = "重進伺服器", Content = "正在嘗試重新連接...", Duration = 3 })
+    end
+})
+
+-- 加入少人伺服器
+Tabs.Server:Button({ 
+    Title = "加入少人伺服器",
+    Callback = function()
+        ServerCore:FindAndHop("small")
+        WindUI:Notify({ Title = "傳送到少人伺服器", Content = "正在尋找玩家最少的伺服器...", Duration = 3 })
+    end
+})
 
     -- Status
     Tabs.Status:Section({ Title = "狀態:", TextSize = 24, FontWeight = Enum.FontWeight.SemiBold })
