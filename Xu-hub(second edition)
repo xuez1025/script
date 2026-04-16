@@ -25,6 +25,13 @@ local WindUI = loadstring(game:HttpGet(
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
 ))()
 
+_G.Config = _G.Config or {}
+_G.Config.FastAttack = _G.Config.FastAttack or {
+    FruitsM1 = false,
+    SelectFruits = "Kitsune",
+    FruitsM1Delay = 0.05
+}
+
 local ESP_ENABLED = false
 local ESP_COLOR   = Color3.fromRGB(30, 30, 30)
 local TEXT_COLOR  = Color3.fromRGB(255, 255, 255)
@@ -1359,6 +1366,84 @@ end)
 
 local flyjumpConnection -- 用於儲存連線，方便後續管理或切換
 
+-- ==================== 核心功能 (不要動這部分) ====================
+local function GetFruitsRemote()
+    local char = LocalPlayer.Character
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    local tool = nil
+
+    -- 在角色身上找
+    if char then
+        if _G.Config.FastAttack.SelectFruits == "Kitsune" then
+            tool = char:FindFirstChild("Kitsune-Kitsune")
+        elseif _G.Config.FastAttack.SelectFruits == "Control" then
+            tool = char:FindFirstChild("Control-Control")
+        elseif _G.Config.FastAttack.SelectFruits == "Dragon" then
+            tool = char:FindFirstChild("Dragon-Dragon")
+        elseif _G.Config.FastAttack.SelectFruits == "Gas" then
+            tool = char:FindFirstChild("Gas-Gas")
+        elseif _G.Config.FastAttack.SelectFruits == "Pain" then
+            tool = char:FindFirstChild("Pain-Pain")
+        elseif _G.Config.FastAttack.SelectFruits == "Blade" then
+            tool = char:FindFirstChild("Blade-Blade")
+        elseif _G.Config.FastAttack.SelectFruits == "T-Rex" then
+            tool = char:FindFirstChild("T-Rex-T-Rex")
+        elseif _G.Config.FastAttack.SelectFruits == "Yeti" then
+            tool = char:FindFirstChild("Yeti-Yeti")
+        elseif _G.Config.FastAttack.SelectFruits == "Tiger" then
+            tool = char:FindFirstChild("Tiger-Tiger")
+        end
+
+        if tool then
+            return tool:FindFirstChild("LeftClickRemote", true)
+        end
+    end
+
+    -- 在背包裡找
+    if backpack then
+        if _G.Config.FastAttack.SelectFruits == "Kitsune" then
+            tool = backpack:FindFirstChild("Kitsune-Kitsune")
+        elseif _G.Config.FastAttack.SelectFruits == "Control" then
+            tool = backpack:FindFirstChild("Control-Control")
+        elseif _G.Config.FastAttack.SelectFruits == "Dragon" then
+            tool = backpack:FindFirstChild("Dragon-Dragon")
+        elseif _G.Config.FastAttack.SelectFruits == "Gas" then
+            tool = backpack:FindFirstChild("Gas-Gas")
+        elseif _G.Config.FastAttack.SelectFruits == "Pain" then
+            tool = backpack:FindFirstChild("Pain-Pain")
+        elseif _G.Config.FastAttack.SelectFruits == "Blade" then
+            tool = backpack:FindFirstChild("Blade-Blade")
+        elseif _G.Config.FastAttack.SelectFruits == "T-Rex" then
+            tool = backpack:FindFirstChild("T-Rex-T-Rex")
+        elseif _G.Config.FastAttack.SelectFruits == "Yeti" then
+            tool = backpack:FindFirstChild("Yeti-Yeti")
+        elseif _G.Config.FastAttack.SelectFruits == "Tiger" then
+            tool = backpack:FindFirstChild("Tiger-Tiger")
+        end
+
+        if tool then
+            return tool:FindFirstChild("LeftClickRemote", true)
+        end
+    end
+    return nil
+end
+
+-- ==================== Fast Attack Fruits M1 核心循環 ====================
+task.spawn(function()
+    while task.wait(_G.Config.FastAttack.FruitsM1Delay) do
+        if _G.Config.FastAttack.FruitsM1 == true then
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local remote = GetFruitsRemote()
+
+            if char and hrp and remote then
+                local direction = -hrp.CFrame.UpVector
+                remote:FireServer(direction, 2, true)
+            end
+        end
+    end
+end)
+
     -- UI
     local Window = WindUI:CreateWindow({
         Title    = "Xu-hub",
@@ -1419,7 +1504,7 @@ local flyjumpConnection -- 用於儲存連線，方便後續管理或切換
     Tabs.General:Toggle({ Title = "水上行走", Desc = "可在水面上行走", Value = false,
         Callback = function(state) setWaterWalkState(state) end
     })
-    Tabs.General:Button({ Title = "Remove Lava", Desc = "按一次觸發",
+    Tabs.General:Button({ Title = "Remove Lava", Desc = "僅限二海岩漿",
         Callback = function() removeLava() end
     })
     Tabs.General:Slider({ Title = "碰撞箱", Desc = "調整碰撞箱大小",
@@ -1539,6 +1624,8 @@ Tabs.PVP:Toggle({ Title = "自動攻擊", Desc = "開啟:自動攻擊/關閉:手
 Tabs.PVP:Button({
     Title = "刷新自動攻擊",
     Desc = "重置攻擊系統",
+	        Locked = true,
+        LockedTitle = "Can't Fix",
     Callback = function()
         -- 停止所有攻擊
         _G.FastAttack = false
@@ -1585,9 +1672,49 @@ Tabs.PVP:Button({
         Value = { Min = 0, Max = 3000, Default = 50 },
         Callback = function(value) Settings.Distance = value end
     })
-    Tabs.PVP:Toggle({ Title = "Fruit M1", Desc = "開啟或關閉果實自動普攻", Value = false,
-        Callback = function(state) getgenv().AUTO_ATTACK_ENABLED = state end
-    })
+
+-- 開關：水果快速 M1
+Tabs.PVP:Toggle({
+    Title = "Fruit M1",
+    Desc = "Only M1 Fruit",
+    Value = _G.Config.FastAttack.FruitsM1 or false,
+    Callback = function(state)
+        _G.Config.FastAttack.FruitsM1 = state
+        print("水果快速 M1:", state and "已開啟" or "已關閉")
+    end
+})
+
+-- 下拉選單：選擇要使用的惡魔果實
+Tabs.PVP:Dropdown({
+    Title = "select Fruit",
+    Multi = false,
+    Values = { 
+        "Kitsune", 
+        "Control", 
+        "Dragon", 
+        "Gas", 
+        "Pain", 
+        "Blade", 
+        "T-Rex", 
+        "Yeti", 
+        "Tiger" 
+    },
+    Default = _G.Config.FastAttack.SelectFruits or "Kitsune",
+    Callback = function(option)
+        _G.Config.FastAttack.SelectFruits = option
+        print("已選擇Fruit:", option)
+    end
+})
+
+-- 可選：調整延遲（如果你想讓用戶自己調整速度）
+Tabs.PVP:Slider({
+    Title = "Fruit M1 延遲",
+    Step = 0.01, 
+    Value = { Min = 0.01, Max = 1, Default = _G.Config.FastAttack.FruitsM1Delay or 0.01 },
+    Callback = function(value)
+        _G.Config.FastAttack.FruitsM1Delay = value
+    end
+})
 
     local function GetPlayerList()
         local list = {}
