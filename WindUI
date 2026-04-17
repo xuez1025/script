@@ -1,0 +1,66 @@
+-- WindUI 載入
+local WindUI = loadstring(game:HttpGet(
+    "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
+))()
+
+-- 先顯示 Popup
+WindUI:Popup({
+    Title   = "Xu-Hub",
+    Icon    = "shield-check",
+    Content = "歡迎使用 Xu-hub 點擊下方執行以啟動介面",
+    Buttons = {
+        { Title = "取消", Callback = function() end, Variant = "Tertiary" },
+        { Title = "執行", Icon = "play",
+          Callback = function()
+              -- 點擊執行後才建立 GUI
+              local Window = WindUI:CreateWindow({
+                  Title       = "Xu-hub",
+                  Icon        = "user-check",
+                  Author      = "by xuez1025",
+                  Folder      = "Xu-Hub",
+                  Size        = UDim2.fromOffset(600, 400),
+                  Transparent = true,
+                  Theme       = "Dark",
+                  User = {
+                      Enabled   = true,
+                      Anonymous = false,
+                      Callback  = function()
+                          WindUI:Notify({ Title = LocalPlayer.Name, Content = "ID: " .. LocalPlayer.UserId, Duration = 3 })
+                      end
+                  },
+                  Acrylic       = false,
+                  HideSearchBar = false,
+                  SideBarWidth  = 200,
+                  OpenButton = {
+                      Title           = "Xu-hub",
+                      CornerRadius    = UDim.new(1, 0),
+                      StrokeThickness = 3,
+                      Enabled         = true,
+                      OnlyMobile      = false,
+                      Draggable       = true,
+                      OnlyIcon        = false,
+                      Color           = ColorSequence.new(Color3.fromHex("#7F00FF"), Color3.fromHex("#00C6FF")),
+                  }
+              })
+              
+              -- 建立分頁
+              local Tabs = {
+                  General  = Window:Tab({ Title = "通用",   Icon = "house"    }),
+                  Server   = Window:Tab({ Title = "Server", Icon = "server"   }),
+                  Status   = Window:Tab({ Title = "狀態",   Icon = "activity" }),
+                  PVP      = Window:Tab({ Title = "PVP",    Icon = "swords"   }),
+                  Farm     = Window:Tab({ Title = "Farm",   Icon = "leaf"     }),
+                  Auto     = Window:Tab({ Title = "自動",   Icon = "cpu"      }),
+                  Settings = Window:Tab({ Title = "設定",   Icon = "settings" }),
+                  Teleport = Window:Tab({ Title = "傳送",   Icon = "map-pin"  }),
+                  Fun      = Window:Tab({ Title = "娛樂",   Icon = "smile"    }),
+                  Other    = Window:Tab({ Title = "其他",   Icon = "ellipsis" }),
+              }
+              
+              -- 之後接上所有 Tab 內容...
+              InitMainHub(Window, Tabs)
+          end,
+          Variant = "Primary"
+        },
+    }
+})
