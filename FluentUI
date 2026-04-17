@@ -1,0 +1,103 @@
+-- 載入 Fluent UI 庫
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+
+-- 建立主視窗
+local Window = Fluent:CreateWindow({
+    Title = "Fluent UI 展示",
+    SubTitle = "by Demo",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = true, -- 磨砂玻璃效果 (可選)
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl -- 縮小視窗的按鍵
+})
+
+-- 建立分頁
+local Tabs = {
+    Main = Window:AddTab({ Title = "Example", Icon = "box" })
+}
+
+--------------------------------------------------
+-- 標題 Section
+--------------------------------------------------
+-- Fluent 中 Section 是直接在 Tab 下方建立
+local Section = Tabs.Main:AddSection("基本元件展示")
+
+--------------------------------------------------
+-- Toggle (開關)
+--------------------------------------------------
+local Toggle = Tabs.Main:AddToggle("MyToggle", {
+    Title = "Toggle Example",
+    Description = "開啟或關閉功能",
+    Default = false
+})
+
+Toggle:OnChanged(function(Value)
+    print("Toggle State:", Value)
+end)
+
+--------------------------------------------------
+-- Button (一次性按鈕)
+--------------------------------------------------
+Tabs.Main:AddButton({
+    Title = "Click Once Button",
+    Description = "按一次觸發",
+    Callback = function()
+        print("Button Clicked!")
+    end
+})
+
+--------------------------------------------------
+-- Slider (滑桿)
+--------------------------------------------------
+local Slider = Tabs.Main:AddSlider("MySlider", {
+    Title = "Slider Example",
+    Description = "可拖動數值",
+    Default = 50,
+    Min = 0,
+    Max = 100,
+    Rounding = 1, -- 小數點位數
+    Callback = function(Value)
+        print("Slider Value:", Value)
+    end
+})
+
+--------------------------------------------------
+-- Notify (通知系統)
+--------------------------------------------------
+Tabs.Main:AddButton({
+    Title = "Notify Button",
+    Callback = function()
+        Fluent:Notify({
+            Title = "通知標題",
+            Content = "這是一個通知訊息",
+            Duration = 5 -- 持續秒數
+        })
+    end
+})
+
+--------------------------------------------------
+-- Dropdown (下拉選單)
+--------------------------------------------------
+local Dropdown = Tabs.Main:AddDropdown("MyDropdown", {
+    Title = "選擇模式",
+    Values = { "模式1", "模式2", "模式3" },
+    Multi = false, -- 是否多選
+    Default = "模式1",
+})
+
+Dropdown:OnChanged(function(Value)
+    print("Selected:", Value)
+end)
+
+--------------------------------------------------
+-- 腳本結尾設定
+--------------------------------------------------
+-- 預設選擇第一個分頁
+Tabs.Main:Select()
+
+Fluent:Notify({
+    Title = "載入完成",
+    Content = "Fluent UI 已經成功載入！",
+    Duration = 3
+})
