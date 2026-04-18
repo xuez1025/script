@@ -1,8 +1,3 @@
---[[ 
-    整合版：飛行 GUI V3 + CFrameFly 邏輯
-    功能：飛行(CFrame)、穿牆、速度加減、介面隱藏/關閉
-]]
-
 local main = Instance.new("ScreenGui")
 local Frame = Instance.new("Frame")
 local noclip = Instance.new("TextButton")
@@ -36,7 +31,15 @@ Frame.Draggable = true
 -- UI 元素配置 (保持你提供的樣式)
 noclip.Name = "noclip"; noclip.Parent = Frame; noclip.BackgroundColor3 = Color3.fromRGB(255, 130, 130); noclip.Position = UDim2.new(0, 0, 0, 0); noclip.Size = UDim2.new(0, 44, 0, 57); noclip.Font = Enum.Font.SourceSans; noclip.Text = "穿牆\nOFF"; noclip.TextColor3 = Color3.fromRGB(0, 0, 0); noclip.TextScaled = true
 
-onof.Name = "onof"; onof.Parent = Frame; onof.BackgroundColor3 = Color3.fromRGB(255, 249, 74); onof.Position = UDim2.new(0.702823281, 0, 0.491228074, 0); onof.Size = UDim2.new(0, 56, 0, 28); onof.Font = Enum.Font.SourceSans; onof.Text = "飛行"; onof.TextColor3 = Color3.fromRGB(0, 0, 0)
+onof.Name = "onof"
+onof.Parent = Frame
+onof.BackgroundColor3 = Color3.fromRGB(255, 249, 74)
+onof.Position = UDim2.new(0.702823281, 0, 0.491228074, 0)
+onof.Size = UDim2.new(0, 56, 0, 28)
+onof.Font = Enum.Font.SourceSans
+onof.Text = "飛行"
+onof.TextColor3 = Color3.fromRGB(0, 0, 0)
+onof.TextSize = 14.000
 
 TextLabel.Parent = Frame; TextLabel.BackgroundColor3 = Color3.fromRGB(242, 60, 255); TextLabel.Position = UDim2.new(0.469327301, 0, 0, 0); TextLabel.Size = UDim2.new(0, 100, 0, 28); TextLabel.Font = Enum.Font.SourceSans; TextLabel.Text = "CFrame Fly V3"; TextLabel.TextColor3 = Color3.fromRGB(0, 0, 0); TextLabel.TextScaled = true
 
