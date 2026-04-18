@@ -2154,7 +2154,7 @@ Tabs.Settings:Toggle({
         Callback = function()
             WindUI:Notify({ Title = "FLY GUI", Content = "正在載入 FLY GUI...", Duration = 3 })
             loadstring(game:HttpGet(
-                "https://raw.githubusercontent.com/xuez1025/code/refs/heads/main/FLY%20GUI"
+                "https://raw.githubusercontent.com/xuez1025/script/refs/heads/main/normal%20fly%20v3"
             ))()
         end
     })
