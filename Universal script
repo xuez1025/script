@@ -14,6 +14,33 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local Terrain = workspace:FindFirstChildWhichIsA("Terrain")
 
+--// 服務與變量
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local lastDeathPos = nil
+
+--// 核心邏輯：記錄死亡位置
+local function setupCharacter(char)
+    local humanoid = char:WaitForChild("Humanoid")
+    local root = char:WaitForChild("HumanoidRootPart")
+
+    humanoid.Died:Connect(function()
+        if root then
+            lastDeathPos = root.CFrame
+            -- 使用 WindUI 通知死亡位置已記錄
+            WindUI:Notify({
+                Title = "系統提示",
+                Content = "已記錄死亡位置",
+                Duration = 3
+            })
+        end
+    end)
+end
+
+-- 初始化角色監聽
+if LocalPlayer.Character then setupCharacter(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(setupCharacter)
+
 -- 變數
 local CamlockEnabled = false
 local TargetPlayer = nil
@@ -21,7 +48,7 @@ local AntiAFK_ENABLED = false
 local AntiAFK_Connection = nil
 local waterWalkEnabled = false
 local JumpSettings = { Enabled = false, JumpPower = 100, MaxJumpPower = 500 }
-local SLIDE_MAGNITUDE = 200
+local SLIDE_MAGNITUDE = 100
 local ACCELERATION = 12
 local DECELERATION = 18
 local moving = false
@@ -34,8 +61,24 @@ local ACTIVE_SEAT = nil
 local flyjumpConnection = nil
 local currentSpeed = 16 
 local isSpeedEnabled = false 
-local FTP = { Enabled = false, Speed = 350, Conn = nil, NoclipConn = nil }
+local FTP = { Enabled = false, Speed = 100, Conn = nil, NoclipConn = nil }
 local FTC = { Enabled = false, Speed = 350, Target = nil, Conn = nil, NoclipConn = nil }
+
+local player = game.Players.LocalPlayer
+local mouse = player:GetMouse()
+local tpEnabled = false
+-- 傳送邏輯：監聽滑鼠點擊
+mouse.Button1Down:Connect(function()
+    if tpEnabled then
+        local character = player.Character
+        if character and character:FindFirstChild("HumanoidRootPart") then
+            -- 獲取滑鼠點擊的世界座標
+            local targetPos = mouse.Hit.p
+            -- 加上高度偏移 (Vector3)，防止卡進地板
+            character.HumanoidRootPart.CFrame = CFrame.new(targetPos + Vector3.new(0, 5, 0))
+        end
+    end
+end)
 
 local character, root, humanoid
 
@@ -784,7 +827,7 @@ Tabs.General:Slider({
     end
 })
 
-    Tabs.General:Section({ Title = "其他玩家" })
+    Tabs.Player:Section({ Title = "其他玩家" })
 local function GetPlayerList()
     local list = {}
     for _, plr in ipairs(Players:GetPlayers()) do
@@ -798,7 +841,7 @@ end
 local isSpectating = false 
 
 -- 1. 選擇玩家 (Dropdown)
-local playerDropdown = Tabs.General:Dropdown({
+local playerDropdown = Tabs.Player:Dropdown({
     Title = "選擇玩家",
     Values = GetPlayerList(),
     Value = nil,
@@ -821,7 +864,7 @@ Players.PlayerAdded:Connect(function()    playerDropdown:Refresh(GetPlayerList()
 Players.PlayerRemoving:Connect(function() playerDropdown:Refresh(GetPlayerList()) end)
 
 -- 2. 傳送玩家
-Tabs.General:Toggle({
+Tabs.Player:Toggle({
     Title = "傳送玩家",
     Desc = "開啟或關閉傳送",
     Value = false,
@@ -843,7 +886,7 @@ Tabs.General:Toggle({
 })
 
 -- 3. Fly to Player
-Tabs.General:Toggle({
+Tabs.Player:Toggle({
     Title = "Fly to Player",
     Desc = "飛向選定玩家",
     Value = false,
@@ -861,15 +904,15 @@ Tabs.General:Toggle({
 })
 
 -- 4. Fly 速度
-Tabs.General:Slider({
+Tabs.Player:Slider({
     Title = "Fly 速度",
-    Desc = "調整飛向玩家的速度",
+    Desc = "調整角色的飛行速度 (上限 500)",
     Value = { Min = 50, Max = 2000, Default = FTP.Speed },
     Callback = function(value) FTP.Speed = value end
 })
 
 -- 5. 視角鎖定
-Tabs.General:Toggle({
+Tabs.Player:Toggle({
     Title = "視角鎖定",
     Desc = "鎖定目標玩家",
     Value = false,
@@ -877,7 +920,7 @@ Tabs.General:Toggle({
 })
 
 -- 6. 觀察玩家
-Tabs.General:Toggle({
+Tabs.Player:Toggle({
     Title = "觀察玩家",
     Desc = "開啟或關閉觀戰",
     Value = false,
@@ -897,9 +940,9 @@ Tabs.General:Toggle({
     end
 })
 
-    Tabs.General:Section({ Title = "ESP Player" })
+    Tabs.Player:Section({ Title = "ESP Player" })
     
-Tabs.General:Toggle({
+Tabs.Player:Toggle({
     Title = "ESP 主開關",
     Desc = "顯示明顯顏色",
     Type = "Checkbox", -- 根據你的要求更改類型
@@ -917,25 +960,25 @@ Tabs.General:Toggle({
     end
 })
 
-    Tabs.General:Toggle({
+    Tabs.Player:Toggle({
         Title = "顯示名稱",
         Value = ESP_SETTINGS.ShowName,
         Callback = function(state) ESP_SETTINGS.ShowName = state end
     })
 
-    Tabs.General:Toggle({
+    Tabs.Player:Toggle({
         Title = "顯示血量和血條",
         Value = ESP_SETTINGS.ShowHealth,
         Callback = function(state) ESP_SETTINGS.ShowHealth = state end
     })
 
-    Tabs.General:Toggle({
+    Tabs.Player:Toggle({
         Title = "顯示距離",
         Value = ESP_SETTINGS.ShowDistance,
         Callback = function(state) ESP_SETTINGS.ShowDistance = state end
     })
 
-    Tabs.General:Toggle({
+    Tabs.Player:Toggle({
         Title = "顯示射線",
         Value = ESP_SETTINGS.ShowTracers,
         Callback = function(state) 
@@ -945,6 +988,7 @@ Tabs.General:Toggle({
             end
         end
     })
+
 Tabs.Server:Section({ Title = "手動加入伺服器" })
 
 Tabs.Server:Input({
@@ -1139,7 +1183,47 @@ Tabs.Settings:Button({
     Callback = function() RemoveFog() end
 })
 
+    Tabs.Teleport:Section({ Title = "傳送" })
+
+Tabs.Teleport:Toggle({
+    Title = "點擊傳送",
+    Desc = "在鼠標位置進行傳送",
+    Value = false, -- 預設關閉
+    Callback = function(state)
+        tpEnabled = state
+        if state then
+            print("傳送功能已開啟")
+        else
+            print("傳送功能已關閉")
+        end
+    end
+})
+
+Tabs.Teleport:Button({
+    Title = "TP 回最後死亡位置",
+    Callback = function()
+        if lastDeathPos and LocalPlayer.Character then
+            local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if root then
+                root.CFrame = lastDeathPos
+                WindUI:Notify({
+                    Title = "傳送成功",
+                    Content = "已成功回到上次死亡地點。",
+                    Duration = 3
+                })
+            end
+        else
+            WindUI:Notify({
+                Title = "傳送失敗",
+                Content = "目前沒有記錄到任何死亡位置！",
+                Duration = 3
+            })
+        end
+    end
+})
+
     Tabs.Other:Section({ Title = "其他" })
+	
     Tabs.Other:Button({ Title = "一般飛行",
         Callback = function()
             WindUI:Notify({ Title = "Normal FLY GUI", Content = "正在載入 Normal FLY GUI...", Duration = 3 })
@@ -1153,6 +1237,14 @@ Tabs.Settings:Button({
             WindUI:Notify({ Title = "Ghost FLY GUI", Content = "正在載入 Ghost FLY GUI...", Duration = 3 })
             loadstring(game:HttpGet(
                 "https://raw.githubusercontent.com/xuez1025/script/refs/heads/main/ghost%20fly%20v3"
+            ))()
+        end
+    })
+    Tabs.Other:Button({ Title = "指令",
+        Callback = function()
+            WindUI:Notify({ Title = "指令", Content = "正在載入 指令...", Duration = 3 })
+            loadstring(game:HttpGet(
+                "https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"
             ))()
         end
     })
@@ -1204,6 +1296,7 @@ WindUI:Popup({
 local Tabs = {
     Announcement = Window:Tab({ Title = "公告說明", Icon = "megaphone" }),
     General      = Window:Tab({ Title = "通用",     Icon = "house"     }),
+    Player       = Window:Tab({ Title = "玩家",   Icon = "user"        }),
     Server       = Window:Tab({ Title = "Server",   Icon = "server"    }),
     Status       = Window:Tab({ Title = "狀態",     Icon = "activity"  }),
     Settings     = Window:Tab({ Title = "設定",     Icon = "settings"  }),
