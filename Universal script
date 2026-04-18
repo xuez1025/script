@@ -1,0 +1,594 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- 1. 初始化邏輯 (確保這些變量已定義)
+local HttpService = game:GetService("HttpService")
+local PlaceId = game.PlaceId
+local JobId = game.JobId
+local ServerBrowserRemote = game:GetService("ReplicatedStorage"):FindFirstChild("__ServerBrowser")
+
+-- 2. 功能核心 (ServerCore)
+local ServerCore = {}
+
+function ServerCore:TeleportToServer(jobId)
+    if not jobId then return end
+    -- 如果是重進伺服器，邏輯上雖然 jobId == JobId 會攔截，但這取決於遠端函數是否支持
+    task.spawn(function()
+        pcall(function()
+            if ServerBrowserRemote then
+                ServerBrowserRemote:InvokeServer("teleport", jobId)
+            end
+        end)
+    end)
+end
+
+function ServerCore:FindAndHop(mode)
+    task.spawn(function()
+        local success, response = pcall(function()
+            return HttpService:JSONDecode(game:HttpGet(
+                "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+            ))
+        end)
+
+        if not (success and response and response.data) then 
+            return 
+        end
+
+        local validServers = {}
+        for _, server in ipairs(response.data) do
+            if server.id ~= JobId and server.playing < server.maxPlayers then
+                table.insert(validServers, {id = server.id, count = server.playing})
+            end
+        end
+
+        if #validServers == 0 then return end
+
+        local targetJobId
+        if mode == "small" then
+            -- 排序以獲取人數最少的
+            table.sort(validServers, function(a, b) return a.count < b.count end)
+            targetJobId = validServers[1].id
+        else
+            -- 隨機跳服
+            targetJobId = validServers[math.random(1, #validServers)].id
+        end
+
+        self:TeleportToServer(targetJobId)
+    end)
+end
+
+-- ================= 設定區 =================
+local ESP_SETTINGS = {
+    Master = false,
+    ShowName = false,
+    ShowHealth = false,
+    ShowDistance = false,
+    ShowTracers = false,
+    TracerColor = Color3.fromRGB(255, 255, 255),
+    HighlightColor = Color3.fromRGB(30, 30, 30)
+}
+
+local Tracers = {}
+local noclipConn = nil
+local NOCLIP_ENABLED = false
+
+-- ================= ESP 功能函數 =================
+
+local function removeTracer(p)
+    if Tracers[p] then
+        Tracers[p]:Remove()
+        Tracers[p] = nil
+    end
+end
+
+local function removeESP(p)
+    removeTracer(p)
+    if p.Character then
+        local h = p.Character:FindFirstChild("ESP_Highlight")
+        if h then h:Destroy() end
+        local head = p.Character:FindFirstChild("Head")
+        if head then
+            local bill = head:FindFirstChild("ESP_Billboard")
+            if bill then bill:Destroy() end
+        end
+    end
+end
+
+local function createESP(p)
+    if p == LocalPlayer or not ESP_SETTINGS.Master then return end
+    
+    local char = p.Character or p.CharacterAdded:Wait()
+    local head = char:WaitForChild("Head", 5)
+    if not head then return end
+    
+    if not char:FindFirstChild("ESP_Highlight") then
+        local h = Instance.new("Highlight")
+        h.Name = "ESP_Highlight"
+        h.FillColor = ESP_SETTINGS.HighlightColor
+        h.OutlineColor = Color3.fromRGB(255, 255, 255)
+        h.FillTransparency = 0.4
+        h.Parent = char
+    end
+
+    if not head:FindFirstChild("ESP_Billboard") then
+        local bill = Instance.new("BillboardGui")
+        bill.Name = "ESP_Billboard"
+        bill.Size = UDim2.fromOffset(140, 48)
+        bill.StudsOffset = Vector3.new(0, 2.6, 0)
+        bill.AlwaysOnTop = true
+        bill.Parent = head
+
+        local text = Instance.new("TextLabel", bill)
+        text.Name = "Info"
+        text.BackgroundTransparency = 1
+        text.TextColor3 = Color3.fromRGB(255, 255, 255)
+        text.TextStrokeTransparency = 0
+        text.Font = Enum.Font.SourceSansBold
+        text.TextScaled = true
+        text.Size = UDim2.new(1, 0, 0.65, 0)
+
+        local barBG = Instance.new("Frame", bill)
+        barBG.Name = "HP_Background"
+        barBG.Size = UDim2.new(0.8, 0, 0.1, 0)
+        barBG.Position = UDim2.new(0.1, 0, 0.8, 0)
+        barBG.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        barBG.BorderSizePixel = 0
+
+        local barFG = Instance.new("Frame", barBG)
+        barFG.Name = "HP_Fill"
+        barFG.Size = UDim2.new(1, 0, 1, 0)
+        barFG.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+        barFG.BorderSizePixel = 0
+    end
+end
+
+local function updateTracer(p, targetHRP)
+    if not ESP_SETTINGS.ShowTracers or not ESP_SETTINGS.Master then
+        removeTracer(p)
+        return
+    end
+
+    local myChar = LocalPlayer.Character
+    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+
+    if myHRP and targetHRP then
+        local startPos, _ = Camera:WorldToViewportPoint(myHRP.Position)
+        local endPos, endVisible = Camera:WorldToViewportPoint(targetHRP.Position)
+
+        if endVisible then
+            local tracer = Tracers[p] or Drawing.new("Line")
+            tracer.Visible = true
+            tracer.From = Vector2.new(startPos.X, startPos.Y)
+            tracer.To = Vector2.new(endPos.X, endPos.Y)
+            tracer.Color = ESP_SETTINGS.TracerColor
+            tracer.Thickness = 1
+            tracer.Transparency = 0.8
+            Tracers[p] = tracer
+        else
+            removeTracer(p)
+        end
+    else
+        removeTracer(p)
+    end
+end
+
+-- ================= Noclip 邏輯 =================
+
+local function setNoclipState(state)
+    NOCLIP_ENABLED = state
+    if state then
+        if noclipConn then return end
+        noclipConn = RunService.Stepped:Connect(function()
+            local char = LocalPlayer.Character
+            if not char then return end
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = false end
+            end
+        end)
+    else
+        if noclipConn then noclipConn:Disconnect(); noclipConn = nil end
+        local char = LocalPlayer.Character
+        if char then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = true end
+            end
+        end
+    end
+end
+
+-- ================= 背景監聽與循環 =================
+
+local function onPlayerAdded(p)
+    p.CharacterAdded:Connect(function()
+        if ESP_SETTINGS.Master then
+            task.wait(0.5)
+            createESP(p)
+        end
+    end)
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
+for _, p in ipairs(Players:GetPlayers()) do onPlayerAdded(p) end
+
+RunService.RenderStepped:Connect(function()
+    if not ESP_SETTINGS.Master then return end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local hum = p.Character:FindFirstChildOfClass("Humanoid")
+            local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+            local head = p.Character:FindFirstChild("Head")
+
+            if hum and hrp and head then
+                local bill = head:FindFirstChild("ESP_Billboard")
+                if bill then
+                    local info = bill:FindFirstChild("Info")
+                    local barBG = bill:FindFirstChild("HP_Background")
+                    local myHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+
+                    local display = ""
+                    if ESP_SETTINGS.ShowName then display = p.Name .. "\n" end
+                    if ESP_SETTINGS.ShowHealth then display = display .. "HP: " .. math.floor(hum.Health) .. " " end
+                    if ESP_SETTINGS.ShowDistance and myHRP then
+                        local dist = math.floor((myHRP.Position - hrp.Position).Magnitude)
+                        display = display .. " " .. dist .. "m"
+                    end
+                    
+                    if info then info.Text = display end
+                    if barBG then 
+                        barBG.Visible = ESP_SETTINGS.ShowHealth 
+                        local fill = barBG:FindFirstChild("HP_Fill")
+                        if fill then
+                            local ratio = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+                            fill.Size = UDim2.new(ratio, 0, 1, 0)
+                            fill.BackgroundColor3 = ratio > 0.6 and Color3.fromRGB(0, 255, 0) or ratio > 0.3 and Color3.fromRGB(255, 255, 0) or Color3.fromRGB(255, 0, 0)
+                        end
+                    end
+                else
+                    createESP(p)
+                end
+                updateTracer(p, hrp)
+            end
+        end
+    end
+end)
+
+local Hitbox = { Enabled = false, Size = 1, Transparency = 0.5, Connections = {} }
+
+-- Hitbox
+local function getRoot(char) return char:FindFirstChild("HumanoidRootPart") end
+
+function Hitbox:ApplyToPlayer(plr)
+    if plr == LocalPlayer or not plr.Character then return end
+    local r = getRoot(plr.Character)
+    if r and r:IsA("BasePart") then
+        r.CanCollide  = false
+        r.Size        = Vector3.new(self.Size, self.Size, self.Size)
+        r.Transparency= self.Transparency
+    end
+end
+
+function Hitbox:ApplyAll()
+    for _, plr in pairs(Players:GetPlayers()) do self:ApplyToPlayer(plr) end
+end
+
+function Hitbox:Start()
+    if self.Enabled then return end
+    self.Enabled = true
+    self:ApplyAll()
+    self.Connections.PlayerAdded = Players.PlayerAdded:Connect(function(plr)
+        plr.CharacterAdded:Connect(function()
+            task.wait(1)
+            if self.Enabled then self:ApplyToPlayer(plr) end
+        end)
+    end)
+end
+
+function Hitbox:Stop() self.Enabled = false end
+
+local MIN_LIMIT = 100   -- 滑桿最小值
+local MAX_LIMIT = 5000  -- 滑桿最大值
+local STEP = 10         -- 每次跳動的間隔 (5000 範圍較大，建議設 10 以上較好拉)
+
+local function UpdateZoomLimit(value)
+    local targetValue = tonumber(value)
+    if not targetValue then return end
+
+    -- 確保數值在 100 ~ 5000 之間
+    targetValue = math.clamp(targetValue, MIN_LIMIT, MAX_LIMIT)
+
+    -- 關鍵：只設定最大距離，最小距離保持在極小值（例如 0.5）
+    -- 這樣你才能在 0.5 到你設定的值之間自由捲動滾輪
+    LocalPlayer.CameraMaxZoomDistance = targetValue
+    LocalPlayer.CameraMinZoomDistance = 0.5
+end
+
+-- 初始化執行一次
+UpdateZoomLimit(100)
+
+-- ================= WindUI 介面初始化函數 =================
+
+local function InitMainHub(Window, Tabs)
+
+    Tabs.General:Section({ Title = "玩家" })
+    Tabs.General:Toggle({
+        Title = "Noclip",
+        Desc = "角色可以穿過牆壁",
+        Value = NOCLIP_ENABLED,
+        Callback = function(state) setNoclipState(state) end
+    })
+	    Tabs.General:Slider({ Title = "碰撞箱", Desc = "調整碰撞箱大小",
+        Value = { Min = 1, Max = 20, Default = Hitbox.Size },
+        Callback = function(value) Hitbox.Size = value; Hitbox:ApplyAll() end
+    })
+Tabs.General:Slider({ 
+    Title = "調整視角上限", 
+    Desc = "調整可縮放最大距離 (100 - 5000)",
+    Value = { 
+        Min = MIN_LIMIT, 
+        Max = MAX_LIMIT, 
+        Default = 100 
+    },
+    Callback = function(value) 
+        UpdateZoomLimit(value) 
+    end
+})
+    Tabs.General:Section({ Title = "ESP Player" })
+    
+Tabs.General:Toggle({
+    Title = "ESP 主開關",
+    Desc = "顯示明顯顏色",
+    Type = "Checkbox", -- 根據你的要求更改類型
+    Default = ESP_SETTINGS.Master, -- 確保預設值與設定檔同步
+    Callback = function(state)
+        ESP_SETTINGS.Master = state
+        -- 當勾選狀態改變時，遍歷所有玩家執行對應動作
+        for _, p in ipairs(Players:GetPlayers()) do
+            if state then 
+                createESP(p) 
+            else 
+                removeESP(p) 
+            end
+        end
+    end
+})
+
+    Tabs.General:Toggle({
+        Title = "顯示名稱",
+        Value = ESP_SETTINGS.ShowName,
+        Callback = function(state) ESP_SETTINGS.ShowName = state end
+    })
+
+    Tabs.General:Toggle({
+        Title = "顯示血量和血條",
+        Value = ESP_SETTINGS.ShowHealth,
+        Callback = function(state) ESP_SETTINGS.ShowHealth = state end
+    })
+
+    Tabs.General:Toggle({
+        Title = "顯示距離",
+        Value = ESP_SETTINGS.ShowDistance,
+        Callback = function(state) ESP_SETTINGS.ShowDistance = state end
+    })
+
+    Tabs.General:Toggle({
+        Title = "顯示射線",
+        Value = ESP_SETTINGS.ShowTracers,
+        Callback = function(state) 
+            ESP_SETTINGS.ShowTracers = state 
+            if not state then
+                for _, p in ipairs(Players:GetPlayers()) do removeTracer(p) end
+            end
+        end
+    })
+local TargetJobID = ""
+
+-- --- 手動加入部分 ---
+Tabs.Server:Section({ Title = "手動加入伺服器" })
+
+Tabs.Server:Input({
+    Title = "伺服器 ID",
+    Placeholder = "在此貼上 JobId...",
+    Callback = function(text)
+        TargetJobID = text
+    end
+})
+
+Tabs.Server:Button({
+    Title = "立即加入",
+    Desc = "加入所輸入的伺服器ID",
+    Callback = function()
+        if TargetJobID ~= "" then
+            if ServerBrowserRemote then
+                ServerCore:TeleportToServer(TargetJobID)
+                WindUI:Notify({
+                    Title = "跳轉中",
+                    Content = "正在嘗試連接到指定伺服器...",
+                    Duration = 3
+                })
+            else
+                WindUI:Notify({
+                    Title = "錯誤",
+                    Content = "遊戲不支持此遠端跳轉功能",
+                    Duration = 5
+                })
+            end
+        else
+            WindUI:Notify({
+                Title = "提示",
+                Content = "請先輸入有效的伺服器 ID",
+                Duration = 3
+            })
+        end
+    end
+})
+
+-- --- 自動跳服部分 ---
+Tabs.Server:Section({ Title = "自動加入伺服器" })
+
+Tabs.Server:Button({ 
+    Title = "加入少人伺服器",
+    Desc = "少於五人",
+    Callback = function()
+        ServerCore:FindAndHop("random")
+        WindUI:Notify({ Title = "伺服器搜尋", Content = "正在尋找隨機伺服器...", Duration = 3 })
+    end
+})
+
+Tabs.Server:Button({ 
+    Title = "伺服器跳轉",
+    Desc = "尋找其他伺服器",
+    Callback = function()
+        ServerCore:FindAndHop("small")
+        WindUI:Notify({ Title = "伺服器搜尋", Content = "正在尋找玩家最少的伺服器...", Duration = 3 })
+    end
+})
+
+Tabs.Server:Button({ 
+    Title = "重進當前伺服器",
+    Desc = "重新加入該伺服器",
+    Callback = function()
+        -- 注意：部分遊戲直接傳送 JobId 到自己可能會失敗，視遊戲邏輯而定
+        ServerCore:TeleportToServer(game.JobId)
+        WindUI:Notify({ Title = "重連中", Content = "正在重新連接到當前伺服器...", Duration = 3 })
+    end
+})
+
+-- 初始化服務與變數
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+
+-- 建立 UI 區塊 (假設 Tabs.Status 與 WindUI 已定義)
+Tabs.Status:Section({ Title = "狀態:", TextSize = 24, FontWeight = Enum.FontWeight.SemiBold })
+Tabs.Status:Space()
+
+local PlayerSection   = Tabs.Status:Section({ Title = "Players: ...",   TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+local TimeSection     = Tabs.Status:Section({ Title = "Local Time: ...", TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+local PingSection     = Tabs.Status:Section({ Title = "Ping: ...",      TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+local FPSSection      = Tabs.Status:Section({ Title = "FPS: ...",       TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+local GameTimeSection = Tabs.Status:Section({ Title = "Game Time: ...",  TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+
+Tabs.Status:Section({ Title = "Discord: https://discord.gg/ptec6vhQtf", TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+Tabs.Status:Button({ 
+    Title = "Copy Discord Link",
+    Callback = function()
+        setclipboard("https://discord.gg/ptec6vhQtf")
+        WindUI:Notify({ Title = "Discord Link", Content = "已成功複製 Discord 連結！", Duration = 3 })
+    end
+})
+
+-- 效能監測變數
+local frameCount = 0
+local lastUpdate = tick()
+local currentFps = 0
+
+-- FPS 計數器
+RunService.RenderStepped:Connect(function()
+    frameCount += 1
+end)
+
+-- 主更新迴圈
+task.spawn(function()
+    while true do
+        local now = tick()
+        local deltaTime = now - lastUpdate
+        
+        -- 每 0.5 秒更新一次 UI，避免過度消耗效能
+        task.wait(0.5)
+        
+        -- 1. 更新 FPS (計算過去一段時間內的平均幀率)
+        if deltaTime >= 1 then
+            currentFps = frameCount / deltaTime
+            frameCount = 0
+            lastUpdate = now
+        end
+        if FPSSection then FPSSection:SetTitle(string.format("FPS: %.0f/s", currentFps)) end
+
+        -- 2. 更新人數
+        if PlayerSection then 
+            PlayerSection:SetTitle(string.format("Players: %d/%d", #Players:GetPlayers(), Players.MaxPlayers or 20)) 
+        end
+
+        -- 3. 更新本地時間
+        local t = os.date("*t")
+        if TimeSection then 
+            TimeSection:SetTitle(string.format("Local Time: %04d-%02d-%02d %02d:%02d:%02d",
+                t.year, t.month, t.day, t.hour, t.min, t.sec))
+        end
+
+        -- 4. 更新 Ping (修正倍率為 1000)
+        if PingSection then 
+            local ping = LocalPlayer:GetNetworkPing() * 1000
+            PingSection:SetTitle(string.format("Ping: %.0f ms", ping))
+        end
+
+        -- 5. 更新遊戲運行時間
+        local gt = math.floor(Workspace.DistributedGameTime + 0.5)
+        if GameTimeSection then 
+            GameTimeSection:SetTitle(string.format("Game Time: %02d:%02d:%02d",
+                math.floor(gt / 3600), math.floor(gt / 60) % 60, gt % 60))
+        end
+    end
+end)
+
+end
+
+-- ================= WindUI 執行區 =================
+
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+WindUI:Popup({
+    Title   = "Xu-Hub",
+    Icon    = "shield-check",
+    Content = "歡迎使用 Xu-hub 點擊下方執行以啟動介面",
+    Buttons = {
+        { Title = "取消", Callback = function() end, Variant = "Tertiary" },
+        { Title = "執行", Icon = "play",
+          Callback = function()
+              local Window = WindUI:CreateWindow({
+                  Title       = "Xu-hub",
+                  Icon        = "user-check",
+                  Author      = "by xuez1025",
+                  Folder      = "Xu-Hub",
+                  Size        = UDim2.fromOffset(600, 400),
+                  Transparent = true,
+                  Theme       = "Dark",
+                  User = {
+                      Enabled   = true,
+                      Anonymous = false,
+                      Callback  = function()
+                          WindUI:Notify({ Title = LocalPlayer.Name, Content = "ID: " .. LocalPlayer.UserId, Duration = 3 })
+                      end
+                  },
+                  Acrylic       = false,
+                  HideSearchBar = false,
+                  SideBarWidth  = 200,
+                  OpenButton = {
+                      Title           = "Xu-hub",
+                      CornerRadius    = UDim.new(1, 0),
+                      StrokeThickness = 3,
+                      Enabled         = true,
+                      Draggable       = true,
+                      Color           = ColorSequence.new(Color3.fromHex("#7F00FF"), Color3.fromHex("#00C6FF")),
+                  }
+              })
+              
+              local Tabs = {
+                  General  = Window:Tab({ Title = "通用",   Icon = "house"    }),
+                  Server   = Window:Tab({ Title = "Server", Icon = "server"   }),
+                  Status   = Window:Tab({ Title = "狀態",   Icon = "activity" }),
+                  Settings = Window:Tab({ Title = "設定",   Icon = "settings" }),
+                  Teleport = Window:Tab({ Title = "傳送",   Icon = "map-pin"  }),
+                  Other    = Window:Tab({ Title = "其他",   Icon = "ellipsis" }),
+              }
+              
+              -- 呼叫初始化函數來填滿內容
+              InitMainHub(Window, Tabs)
+          end,
+          Variant = "Primary"
+        },
+    }
+})
