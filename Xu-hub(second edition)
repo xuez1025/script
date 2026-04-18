@@ -1643,51 +1643,84 @@ Tabs.Server:Button({
 })
 
     -- Status
-    Tabs.Status:Section({ Title = "狀態:", TextSize = 24, FontWeight = Enum.FontWeight.SemiBold })
-    Tabs.Status:Space()
+-- 初始化服務與變數
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
 
-    local PlayerSection   = Tabs.Status:Section({ Title = "Players: ...",    TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
-    local TimeSection     = Tabs.Status:Section({ Title = "Local Time: ...", TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
-    local PingSection     = Tabs.Status:Section({ Title = "Ping: ...",       TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
-    local FPSSection      = Tabs.Status:Section({ Title = "FPS: ...",        TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
-    local GameTimeSection = Tabs.Status:Section({ Title = "Game Time: ...",  TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+-- 建立 UI 區塊 (假設 Tabs.Status 與 WindUI 已定義)
+Tabs.Status:Section({ Title = "狀態:", TextSize = 24, FontWeight = Enum.FontWeight.SemiBold })
+Tabs.Status:Space()
 
-    Tabs.Status:Section({ Title = "Discord: https://discord.gg/ptec6vhQtf", TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
-    Tabs.Status:Button({ Title = "Copy Discord Link",
-        Callback = function()
-            setclipboard("https://discord.gg/ptec6vhQtf")
-            WindUI:Notify({ Title = "Discord Link", Content = "已成功複製 Discord 連結！", Duration = 3 })
+local PlayerSection   = Tabs.Status:Section({ Title = "Players: ...",   TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+local TimeSection     = Tabs.Status:Section({ Title = "Local Time: ...", TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+local PingSection     = Tabs.Status:Section({ Title = "Ping: ...",      TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+local FPSSection      = Tabs.Status:Section({ Title = "FPS: ...",       TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+local GameTimeSection = Tabs.Status:Section({ Title = "Game Time: ...",  TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+
+Tabs.Status:Section({ Title = "Discord: https://discord.gg/ptec6vhQtf", TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+Tabs.Status:Button({ 
+    Title = "Copy Discord Link",
+    Callback = function()
+        setclipboard("https://discord.gg/ptec6vhQtf")
+        WindUI:Notify({ Title = "Discord Link", Content = "已成功複製 Discord 連結！", Duration = 3 })
+    end
+})
+
+-- 效能監測變數
+local frameCount = 0
+local lastUpdate = tick()
+local currentFps = 0
+
+-- FPS 計數器
+RunService.RenderStepped:Connect(function()
+    frameCount += 1
+end)
+
+-- 主更新迴圈
+task.spawn(function()
+    while true do
+        local now = tick()
+        local deltaTime = now - lastUpdate
+        
+        -- 每 0.5 秒更新一次 UI，避免過度消耗效能
+        task.wait(0.5)
+        
+        -- 1. 更新 FPS (計算過去一段時間內的平均幀率)
+        if deltaTime >= 1 then
+            currentFps = frameCount / deltaTime
+            frameCount = 0
+            lastUpdate = now
         end
-    })
+        if FPSSection then FPSSection:SetTitle(string.format("FPS: %.0f/s", currentFps)) end
 
-    local frameCount, lastTime, fps = 0, tick(), 0
-    RunService.RenderStepped:Connect(function() frameCount += 1 end)
-    task.spawn(function()
-        while true do
-            task.wait(0.5)
-            if PlayerSection.SetTitle then
-                PlayerSection:SetTitle(string.format("Players: %d/%d", #Players:GetPlayers(), Players.MaxPlayers or 20))
-            end
-            local t = os.date("*t")
-            if TimeSection.SetTitle then
-                TimeSection:SetTitle(string.format("Local Time: %04d-%02d-%02d %02d:%02d:%02d",
-                    t.year, t.month, t.day, t.hour, t.min, t.sec))
-            end
-            if PingSection.SetTitle then
-                PingSection:SetTitle(string.format("Ping: %.0f ms", LocalPlayer:GetNetworkPing() * 3000))
-            end
-            local now = tick()
-            if now - lastTime >= 1 then
-                fps = frameCount / (now - lastTime); frameCount = 0; lastTime = now
-            end
-            if FPSSection.SetTitle then FPSSection:SetTitle(string.format("FPS: %.0f/s", fps)) end
-            local gt = math.floor(Workspace.DistributedGameTime + 0.5)
-            if GameTimeSection.SetTitle then
-                GameTimeSection:SetTitle(string.format("Game Time: %02d:%02d:%02d",
-                    math.floor(gt / 3600) % 24, math.floor(gt / 60) % 60, gt % 60))
-            end
+        -- 2. 更新人數
+        if PlayerSection then 
+            PlayerSection:SetTitle(string.format("Players: %d/%d", #Players:GetPlayers(), Players.MaxPlayers or 20)) 
         end
-    end)
+
+        -- 3. 更新本地時間
+        local t = os.date("*t")
+        if TimeSection then 
+            TimeSection:SetTitle(string.format("Local Time: %04d-%02d-%02d %02d:%02d:%02d",
+                t.year, t.month, t.day, t.hour, t.min, t.sec))
+        end
+
+        -- 4. 更新 Ping (修正倍率為 1000)
+        if PingSection then 
+            local ping = LocalPlayer:GetNetworkPing() * 1000
+            PingSection:SetTitle(string.format("Ping: %.0f ms", ping))
+        end
+
+        -- 5. 更新遊戲運行時間
+        local gt = math.floor(Workspace.DistributedGameTime + 0.5)
+        if GameTimeSection then 
+            GameTimeSection:SetTitle(string.format("Game Time: %02d:%02d:%02d",
+                math.floor(gt / 3600), math.floor(gt / 60) % 60, gt % 60))
+        end
+    end
+end)
 
     -- PVP
     Tabs.PVP:Section({ Title = "PVP" })
