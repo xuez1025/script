@@ -3,51 +3,382 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- 1. 初始化邏輯 (確保這些變量已定義)
+--// Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local Terrain = workspace:FindFirstChildWhichIsA("Terrain")
+
+-- 變數
+local CamlockEnabled = false
+local TargetPlayer = nil
+local AntiAFK_ENABLED = false
+local AntiAFK_Connection = nil
+local waterWalkEnabled = false
+local JumpSettings = { Enabled = false, JumpPower = 100, MaxJumpPower = 500 }
+local SLIDE_MAGNITUDE = 200
+local ACCELERATION = 12
+local DECELERATION = 18
+local moving = false
+local moveConn = nil
+local moveKeys = { W = false, A = false, S = false, D = false }
+local currentVelocity = Vector3.zero
+local wasMoving = false
+local slideLocked = false
+local ACTIVE_SEAT = nil
+local flyjumpConnection = nil
+local currentSpeed = 16 
+local isSpeedEnabled = false 
+local FTP = { Enabled = false, Speed = 350, Conn = nil, NoclipConn = nil }
+local FTC = { Enabled = false, Speed = 350, Target = nil, Conn = nil, NoclipConn = nil }
+
+local character, root, humanoid
+
+local function setupCharacter(char)
+    character = char
+    root = char:WaitForChild("HumanoidRootPart")
+    humanoid = char:WaitForChild("Humanoid")
+end
+
+-- Spectate
+local viewDied, viewChanged, viewing
+
+local function StopSpectate()
+    if viewDied then viewDied:Disconnect(); viewDied = nil end
+    if viewChanged then viewChanged:Disconnect(); viewChanged = nil end
+    workspace.CurrentCamera.CameraSubject = Players.LocalPlayer.Character
+    viewing = nil
+end
+
+local function SpectatePlayer(plr)
+    StopSpectate()
+    if not plr or not plr.Character then return end
+    viewing = plr
+    workspace.CurrentCamera.CameraSubject = viewing.Character
+    viewDied = plr.CharacterAdded:Connect(function()
+        repeat task.wait() until plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+        workspace.CurrentCamera.CameraSubject = plr.Character
+    end)
+    viewChanged = workspace.CurrentCamera:GetPropertyChangedSignal("CameraSubject"):Connect(function()
+        if viewing and viewing.Character then
+            workspace.CurrentCamera.CameraSubject = viewing.Character
+        end
+    end)
+end
+
+-- Fly helpers
+local function setPlatformStand(state)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then hum.PlatformStand = state end
+end
+
+local function resetCharPhysics()
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = true
+            part.Velocity = Vector3.zero
+        end
+    end
+end
+
+-- FlyToPlayer (FTP)
+local function FTP_Enable()
+    if FTP.Enabled then return end
+    FTP.Enabled = true
+    setPlatformStand(true)
+    FTP.Conn = RunService.RenderStepped:Connect(function()
+        if not FTP.Enabled then return end
+        if not TargetPlayer or not TargetPlayer.Character then return end
+        local char = LocalPlayer.Character
+        local pHRP = char and char:FindFirstChild("HumanoidRootPart")
+        local targetHRP = TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not pHRP or not targetHRP then return end
+        local dir = targetHRP.Position - pHRP.Position
+        if dir.Magnitude > 0 then pHRP.Velocity = dir.Unit * FTP.Speed end
+    end)
+    FTP.NoclipConn = RunService.Stepped:Connect(function()
+        if not FTP.Enabled then return end
+        local char = LocalPlayer.Character
+        if not char then return end
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then part.CanCollide = false end
+        end
+    end)
+end
+
+local function FTP_Disable()
+    FTP.Enabled = false
+    if FTP.Conn then FTP.Conn:Disconnect(); FTP.Conn = nil end
+    if FTP.NoclipConn then FTP.NoclipConn:Disconnect(); FTP.NoclipConn = nil end
+    setPlatformStand(false)
+    resetCharPhysics()
+end
+
+-- FlyToCoord (FTC)
+local function FTC_Enable(targetVec3)
+    if FTC.Enabled then FTC_Disable() end
+    FTC.Enabled = true
+    FTC.Target = targetVec3
+    setPlatformStand(true)
+    FTC.Conn = RunService.RenderStepped:Connect(function()
+        if not FTC.Enabled then return end
+        local char = LocalPlayer.Character
+        local pHRP = char and char:FindFirstChild("HumanoidRootPart")
+        if not pHRP then return end
+        local dir = FTC.Target - pHRP.Position
+        if dir.Magnitude > 1 then
+            pHRP.Velocity = dir.Unit * FTC.Speed
+        else
+            pHRP.Velocity = Vector3.zero
+            FTC_Disable()
+        end
+    end)
+    FTC.NoclipConn = RunService.Stepped:Connect(function()
+        if not FTC.Enabled then return end
+        local char = LocalPlayer.Character
+        if not char then return end
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then part.CanCollide = false end
+        end
+    end)
+end
+
+function FTC_Disable()
+    FTC.Enabled = false
+    FTC.Target = nil
+    if FTC.Conn then FTC.Conn:Disconnect(); FTC.Conn = nil end
+    if FTC.NoclipConn then FTC.NoclipConn:Disconnect(); FTC.NoclipConn = nil end
+    setPlatformStand(false)
+    resetCharPhysics()
+end
+
+-- Jump
+local function updateJumpPower()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    if hum.UseJumpPower then
+        hum.JumpPower = JumpSettings.Enabled and JumpSettings.JumpPower or 50
+    else
+        hum.JumpHeight = JumpSettings.Enabled and JumpSettings.JumpPower or 7.2
+    end
+end
+
+-- Movement
+local function startMove()
+    if moving or not root or slideLocked then return end
+    moving = true
+    wasMoving = true
+    moveConn = RunService.RenderStepped:Connect(function(dt)
+        if not root or ACTIVE_SEAT or slideLocked then return end
+        local cam = Workspace.CurrentCamera
+        local look = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
+        local right = Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z)
+        local dir = Vector3.zero
+        if moveKeys.W then dir += look end
+        if moveKeys.S then dir -= look end
+        if moveKeys.A then dir -= right end
+        if moveKeys.D then dir += right end
+        if dir.Magnitude > 0 then dir = dir.Unit end
+        local targetVelocity = dir * SLIDE_MAGNITUDE
+        local lerpSpeed = dir.Magnitude > 0 and ACCELERATION or DECELERATION
+        currentVelocity = currentVelocity:Lerp(targetVelocity, math.clamp(lerpSpeed * dt, 0, 1))
+        root.CFrame += Vector3.new(currentVelocity.X, 0, currentVelocity.Z) * dt
+    end)
+end
+
+local function stopMove()
+    moving = false
+    if moveConn then moveConn:Disconnect(); moveConn = nil end
+end
+
+local function toggleMove(state)
+    if slideLocked and state then return end
+    if state then
+        startMove()
+    else
+        stopMove(); wasMoving = false; currentVelocity = Vector3.zero
+    end
+end
+
+-- Anti AFK
+local function EnableAntiAFK()
+    if AntiAFK_ENABLED then return end
+    AntiAFK_ENABLED = true
+    if getconnections then
+        for _, connection in pairs(getconnections(Players.LocalPlayer.Idled)) do
+            if connection.Disable then connection:Disable()
+            elseif connection.Disconnect then connection:Disconnect() end
+        end
+    else
+        AntiAFK_Connection = Players.LocalPlayer.Idled:Connect(function()
+            local VirtualUser = game:GetService("VirtualUser")
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new())
+        end)
+    end
+end
+
+local function DisableAntiAFK()
+    if not AntiAFK_ENABLED then return end
+    AntiAFK_ENABLED = false
+    if AntiAFK_Connection then AntiAFK_Connection:Disconnect(); AntiAFK_Connection = nil end
+end
+
+-- Low Graphics
+local function ApplyLowGraphics(state)
+    if state then
+        Terrain.WaterWaveSize = 0
+        Terrain.WaterWaveSpeed = 0
+        Terrain.WaterReflectance = 0
+        Terrain.WaterTransparency = 1
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 9e9
+        Lighting.FogStart = 9e9
+        settings().Rendering.QualityLevel = 1
+        for _, v in pairs(game:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.CastShadow = false; v.Material = Enum.Material.Plastic; v.Reflectance = 0
+            elseif v:IsA("Decal") then
+                v.Transparency = 1; v.Texture = ""
+            elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
+                v.Lifetime = NumberRange.new(0)
+            end
+        end
+        for _, v in pairs(Lighting:GetDescendants()) do
+            if v:IsA("PostEffect") then v.Enabled = false end
+        end
+        workspace.DescendantAdded:Connect(function(child)
+            task.spawn(function()
+                if child:IsA("ForceField") or child:IsA("Sparkles") or child:IsA("Smoke")
+                   or child:IsA("Fire") or child:IsA("Beam") then
+                    RunService.Heartbeat:Wait()
+                    child:Destroy()
+                elseif child:IsA("BasePart") then
+                    child.CastShadow = false
+                end
+            end)
+        end)
+    else
+        Lighting.GlobalShadows = true
+    end
+end
+
+-- Remove Fog
+local function RemoveFog()
+    local layers = Lighting:FindFirstChild("LightingLayers")
+    if layers then layers:Destroy() end
+    local sky = Lighting:FindFirstChildOfClass("Sky")
+    if sky then sky:Destroy() end
+    Lighting.FogEnd = 9e9
+end
+
+-- Teleport Player
+local TPConnection = nil
+
+-- 初始化
+setupCharacter(LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait())
+LocalPlayer.CharacterAdded:Connect(setupCharacter)
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.W then moveKeys.W = true end
+    if input.KeyCode == Enum.KeyCode.A then moveKeys.A = true end
+    if input.KeyCode == Enum.KeyCode.S then moveKeys.S = true end
+    if input.KeyCode == Enum.KeyCode.D then moveKeys.D = true end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.W then moveKeys.W = false end
+    if input.KeyCode == Enum.KeyCode.A then moveKeys.A = false end
+    if input.KeyCode == Enum.KeyCode.S then moveKeys.S = false end
+    if input.KeyCode == Enum.KeyCode.D then moveKeys.D = false end
+end)
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.5); updateJumpPower()
+end)
+
+RunService.RenderStepped:Connect(function()
+    if CamlockEnabled and TargetPlayer and TargetPlayer.Character then
+        local tHRP = TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if tHRP then
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, tHRP.Position)
+        end
+    end
+end)
+
+-- 1. 初始化服務與變量
 local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local Players = game:GetService("Players")
 local PlaceId = game.PlaceId
 local JobId = game.JobId
+local LocalPlayer = Players.LocalPlayer
+
+-- 偵測是否為 Blox Fruits 或有類似機制的遊戲
 local ServerBrowserRemote = game:GetService("ReplicatedStorage"):FindFirstChild("__ServerBrowser")
 
--- 2. 功能核心 (ServerCore)
+-- 2. 功能核心 (智能判斷型 ServerCore)
 local ServerCore = {}
 
 function ServerCore:TeleportToServer(jobId)
-    if not jobId then return end
-    -- 如果是重進伺服器，邏輯上雖然 jobId == JobId 會攔截，但這取決於遠端函數是否支持
+    if not jobId or jobId == "" then return end
+    
     task.spawn(function()
-        pcall(function()
-            if ServerBrowserRemote then
+        -- 優先嘗試 Blox Fruits 內建方式
+        if ServerBrowserRemote then
+            local success = pcall(function()
                 ServerBrowserRemote:InvokeServer("teleport", jobId)
-            end
+            end)
+            if success then return end -- 如果成功執行則結束
+        end
+
+        -- 如果沒有內建方式或內建方式失敗，使用系統強制跳轉 (通用)
+        pcall(function()
+            TeleportService:TeleportToPlaceInstance(PlaceId, jobId, LocalPlayer)
         end)
     end)
 end
 
 function ServerCore:FindAndHop(mode)
     task.spawn(function()
+        -- 獲取伺服器列表
+        local url = "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
         local success, response = pcall(function()
-            return HttpService:JSONDecode(game:HttpGet(
-                "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
-            ))
+            return HttpService:JSONDecode(game:HttpGet(url))
         end)
 
         if not (success and response and response.data) then 
+            WindUI:Notify({ Title = "錯誤", Content = "無法獲取伺服器列表", Duration = 3 })
             return 
         end
 
         local validServers = {}
         for _, server in ipairs(response.data) do
+            -- 排除當前伺服器且確保有空位
             if server.id ~= JobId and server.playing < server.maxPlayers then
                 table.insert(validServers, {id = server.id, count = server.playing})
             end
         end
 
-        if #validServers == 0 then return end
+        if #validServers == 0 then 
+            WindUI:Notify({ Title = "提示", Content = "目前沒有合適的伺服器", Duration = 3 })
+            return 
+        end
 
         local targetJobId
         if mode == "small" then
-            -- 排序以獲取人數最少的
+            -- 排序獲取人數最少的
             table.sort(validServers, function(a, b) return a.count < b.count end)
             targetJobId = validServers[1].id
         else
@@ -59,6 +390,8 @@ function ServerCore:FindAndHop(mode)
     end)
 end
 
+local TargetJobID = ""
+
 -- ================= 設定區 =================
 local ESP_SETTINGS = {
     Master = false,
@@ -69,6 +402,9 @@ local ESP_SETTINGS = {
     TracerColor = Color3.fromRGB(255, 255, 255),
     HighlightColor = Color3.fromRGB(30, 30, 30)
 }
+
+local CurrentKey = "G"
+local KeyDisabled = false
 
 local Tracers = {}
 local noclipConn = nil
@@ -311,7 +647,120 @@ UpdateZoomLimit(100)
 
 local function InitMainHub(Window, Tabs)
 
-    Tabs.General:Section({ Title = "玩家" })
+    Tabs.Announcement:Section({ Title = "功能說明" })
+
+    Tabs.Announcement:Paragraph({
+        Title = "🛡️ 安全使用須知",
+        Desc = "小心使用,以免被封號"
+    })
+
+Tabs.Announcement:Section({ Title = "系統通知" })
+
+    Tabs.Announcement:Button({
+        Title = "點擊獲取最新公告",
+        Desc = "顯示當前腳本版本與維護資訊",
+        Callback = function()
+            WindUI:Notify({
+                Title = "Xu-Hub 訊息",
+                Content = "當前版本:尚未加密",
+                Duration = 5
+            })
+        end
+    })
+
+    Tabs.General:Section({ Title = "修改數值" })
+
+Tabs.General:Toggle({
+    Title = "走路速度",
+    Desc = "可修改當前走路",
+    Value = false,
+    Callback = function(state)
+        isSpeedEnabled = state
+        local character = game.Players.LocalPlayer.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        
+        if humanoid then
+            if state then
+                humanoid.WalkSpeed = currentSpeed
+            else
+                humanoid.WalkSpeed = 16 -- 恢復 Roblox 預設速度
+            end
+        end
+    end
+})
+
+Tabs.General:Slider({
+    Title = "走路速度調整",
+    Desc = "調整角色的移動速度 (上限 1000)",
+    Value = {
+        Min = 16,
+        Max = 1000,
+        Default = 16
+    },
+    Callback = function(value)
+        currentSpeed = value
+        -- 如果開關是開啟的，就即時更新速度
+        local character = game.Players.LocalPlayer.Character
+        if isSpeedEnabled and character and character:FindFirstChildOfClass("Humanoid") then
+            character:FindFirstChildOfClass("Humanoid").WalkSpeed = value
+        end
+    end
+})
+
+-- 10. 移動速度（開關）
+Tabs.General:Toggle({
+    Title = "滑動速度",
+    Desc = "可修改當前滑動",
+    Value = false,
+    Callback = function(state) toggleMove(state) end
+})
+
+-- 11. 速度調整（Slider）
+Tabs.General:Slider({
+    Title = "滑動速度調整",
+    Desc = "調整角色的滑動速度 (上限 1000)",
+    Value = { Min = 0, Max = 1000, Default = SLIDE_MAGNITUDE },
+    Callback = function(value) SLIDE_MAGNITUDE = value end
+})
+
+-- 12. 跳躍開關
+Tabs.General:Toggle({
+    Title = "跳躍力量",
+    Desc = "可修改當前跳躍",
+    Value = JumpSettings.Enabled,
+    Callback = function(state)
+        JumpSettings.Enabled = state
+        updateJumpPower()
+    end
+})
+
+-- 13. 跳躍高度
+Tabs.General:Slider({
+    Title = "跳躍高度",
+    Desc = "調整角色的跳躍高度 (上限 500)",
+    Value = { Min = 0, Max = JumpSettings.MaxJumpPower, Default = JumpSettings.JumpPower },
+    Callback = function(value)
+        JumpSettings.JumpPower = value
+        updateJumpPower()
+    end
+})
+
+-- 14. 無限跳躍
+Tabs.General:Toggle({
+    Title = "無限跳躍",
+    Desc = "按住跳躍鍵",
+    Value = false,
+    Callback = function(state)
+        if state then
+            flyjumpConnection = UserInputService.JumpRequest:Connect(function()
+                local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end
+            end)
+        else
+            if flyjumpConnection then flyjumpConnection:Disconnect(); flyjumpConnection = nil end
+        end
+    end
+})
     Tabs.General:Toggle({
         Title = "Noclip",
         Desc = "角色可以穿過牆壁",
@@ -334,6 +783,120 @@ Tabs.General:Slider({
         UpdateZoomLimit(value) 
     end
 })
+
+    Tabs.General:Section({ Title = "其他玩家" })
+local function GetPlayerList()
+    local list = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then table.insert(list, plr.Name) end
+    end
+    return list
+end
+
+-- 1. 選擇玩家
+-- 定義一個變數來追蹤目前的觀察狀態
+local isSpectating = false 
+
+-- 1. 選擇玩家 (Dropdown)
+local playerDropdown = Tabs.General:Dropdown({
+    Title = "選擇玩家",
+    Values = GetPlayerList(),
+    Value = nil,
+    Callback = function(option)
+        -- 尋找目標玩家
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr.Name == option then 
+                TargetPlayer = plr 
+                break 
+            end
+        end
+
+        -- 【關鍵修改】：如果目前正開啟著觀察模式，且目標玩家存在，就直接切換鏡頭
+        if isSpectating and TargetPlayer then
+            SpectatePlayer(TargetPlayer)
+        end
+    end
+})
+Players.PlayerAdded:Connect(function()    playerDropdown:Refresh(GetPlayerList()) end)
+Players.PlayerRemoving:Connect(function() playerDropdown:Refresh(GetPlayerList()) end)
+
+-- 2. 傳送玩家
+Tabs.General:Toggle({
+    Title = "傳送玩家",
+    Desc = "開啟或關閉傳送",
+    Value = false,
+    Callback = function(state)
+        if state then
+            TPConnection = RunService.Heartbeat:Connect(function()
+                if TargetPlayer and TargetPlayer.Character
+                   and TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                   and LocalPlayer.Character
+                   and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    LocalPlayer.Character.HumanoidRootPart.CFrame =
+                        TargetPlayer.Character.HumanoidRootPart.CFrame
+                end
+            end)
+        else
+            if TPConnection then TPConnection:Disconnect(); TPConnection = nil end
+        end
+    end
+})
+
+-- 3. Fly to Player
+Tabs.General:Toggle({
+    Title = "Fly to Player",
+    Desc = "飛向選定玩家",
+    Value = false,
+    Callback = function(state)
+        if state then
+            if not TargetPlayer then
+                WindUI:Notify({ Title = "Fly to Player", Content = "請先選擇目標玩家！", Duration = 3 })
+                return
+            end
+            FTP_Enable()
+        else
+            FTP_Disable()
+        end
+    end
+})
+
+-- 4. Fly 速度
+Tabs.General:Slider({
+    Title = "Fly 速度",
+    Desc = "調整飛向玩家的速度",
+    Value = { Min = 50, Max = 2000, Default = FTP.Speed },
+    Callback = function(value) FTP.Speed = value end
+})
+
+-- 5. 視角鎖定
+Tabs.General:Toggle({
+    Title = "視角鎖定",
+    Desc = "鎖定目標玩家",
+    Value = false,
+    Callback = function(state) CamlockEnabled = state end
+})
+
+-- 6. 觀察玩家
+Tabs.General:Toggle({
+    Title = "觀察玩家",
+    Desc = "開啟或關閉觀戰",
+    Value = false,
+    Callback = function(state)
+        isSpectating = state -- 更新追蹤狀態
+        
+        if state then
+            if TargetPlayer then
+                SpectatePlayer(TargetPlayer)
+                WindUI:Notify({ Title = "Spectate", Content = "正在觀察 " .. TargetPlayer.Name, Duration = 3 })
+            else
+                WindUI:Notify({ Title = "Spectate", Content = "請先選擇玩家！", Duration = 3 })
+            end
+        else
+            StopSpectate()
+        end
+    end
+})
+
     Tabs.General:Section({ Title = "ESP Player" })
     
 Tabs.General:Toggle({
@@ -382,9 +945,6 @@ Tabs.General:Toggle({
             end
         end
     })
-local TargetJobID = ""
-
--- --- 手動加入部分 ---
 Tabs.Server:Section({ Title = "手動加入伺服器" })
 
 Tabs.Server:Input({
@@ -397,42 +957,30 @@ Tabs.Server:Input({
 
 Tabs.Server:Button({
     Title = "立即加入",
-    Desc = "加入所輸入的伺服器ID",
+    Desc = "加入所輸入的伺服器",
     Callback = function()
         if TargetJobID ~= "" then
-            if ServerBrowserRemote then
-                ServerCore:TeleportToServer(TargetJobID)
-                WindUI:Notify({
-                    Title = "跳轉中",
-                    Content = "正在嘗試連接到指定伺服器...",
-                    Duration = 3
-                })
-            else
-                WindUI:Notify({
-                    Title = "錯誤",
-                    Content = "遊戲不支持此遠端跳轉功能",
-                    Duration = 5
-                })
-            end
-        else
+            local method = ServerBrowserRemote and "遊戲內通道" or "系統 API"
             WindUI:Notify({
-                Title = "提示",
-                Content = "請先輸入有效的伺服器 ID",
+                Title = "跳轉中",
+                Content = "正在透過 " .. method .. " 連接到伺服器...",
                 Duration = 3
             })
+            ServerCore:TeleportToServer(TargetJobID)
+        else
+            WindUI:Notify({ Title = "提示", Content = "請先輸入有效的伺服器 ID", Duration = 3 })
         end
     end
 })
 
--- --- 自動跳服部分 ---
 Tabs.Server:Section({ Title = "自動加入伺服器" })
 
 Tabs.Server:Button({ 
     Title = "加入少人伺服器",
-    Desc = "少於五人",
+    Desc = "少於5人",
     Callback = function()
-        ServerCore:FindAndHop("random")
-        WindUI:Notify({ Title = "伺服器搜尋", Content = "正在尋找隨機伺服器...", Duration = 3 })
+        WindUI:Notify({ Title = "搜尋中", Content = "正在分析伺服器列表...", Duration = 3 })
+        ServerCore:FindAndHop("small")
     end
 })
 
@@ -440,8 +988,8 @@ Tabs.Server:Button({
     Title = "伺服器跳轉",
     Desc = "尋找其他伺服器",
     Callback = function()
-        ServerCore:FindAndHop("small")
-        WindUI:Notify({ Title = "伺服器搜尋", Content = "正在尋找玩家最少的伺服器...", Duration = 3 })
+        WindUI:Notify({ Title = "搜尋中", Content = "正在隨機挑選伺服器...", Duration = 3 })
+        ServerCore:FindAndHop("random")
     end
 })
 
@@ -449,9 +997,8 @@ Tabs.Server:Button({
     Title = "重進當前伺服器",
     Desc = "重新加入該伺服器",
     Callback = function()
-        -- 注意：部分遊戲直接傳送 JobId 到自己可能會失敗，視遊戲邏輯而定
-        ServerCore:TeleportToServer(game.JobId)
-        WindUI:Notify({ Title = "重連中", Content = "正在重新連接到當前伺服器...", Duration = 3 })
+        WindUI:Notify({ Title = "重連中", Content = "正在嘗試重新進入目前伺服器...", Duration = 3 })
+        ServerCore:TeleportToServer(JobId)
     end
 })
 
@@ -463,6 +1010,16 @@ local LocalPlayer = Players.LocalPlayer
 
 -- 建立 UI 區塊 (假設 Tabs.Status 與 WindUI 已定義)
 Tabs.Status:Section({ Title = "狀態:", TextSize = 24, FontWeight = Enum.FontWeight.SemiBold })
+-- 9. Anti AFK
+Tabs.Status:Toggle({
+    Title = "Anti AFK",
+    Desc = "防止閒置被踢出",
+    Value = true,
+    Callback = function(state)
+        if state then EnableAntiAFK() else DisableAntiAFK() end
+    end
+})
+
 Tabs.Status:Space()
 
 local PlayerSection   = Tabs.Status:Section({ Title = "Players: ...",   TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
@@ -534,6 +1091,71 @@ task.spawn(function()
     end
 end)
 
+    Tabs.Settings:Section({ Title = "設定" })
+Tabs.Settings:Keybind({ 
+    Title = "快捷鍵", 
+    Desc = "可更改", 
+    Value = CurrentKey,
+    Callback = function(v)
+        CurrentKey = v
+        
+        if not KeyDisabled then
+            Window:SetToggleKey(Enum.KeyCode[v])
+        end
+    end
+})
+
+-- 停用快捷鍵開關
+Tabs.Settings:Toggle({
+    Title = "停用快捷鍵",
+    Desc = "開啟後將禁用快捷鍵",
+    Value = false,
+    Callback = function(state)
+        KeyDisabled = state
+        
+        if state then
+            -- 停用快捷鍵
+            Window:SetToggleKey(nil)
+        else
+            -- 恢復快捷鍵
+            Window:SetToggleKey(Enum.KeyCode[CurrentKey])
+        end
+    end
+})
+
+    Tabs.Settings:Section({ Title = "畫質設定" })
+
+-- 7. 低配模式
+Tabs.Settings:Button({
+    Title = "低配模式",
+    Desc = "按一次啟用低配模式",
+    Callback = function() ApplyLowGraphics(true) end
+})
+
+-- 8. Remove Fog
+Tabs.Settings:Button({
+    Title = "Remove Fog",
+    Desc = "按一次啟用 Remove Fog",
+    Callback = function() RemoveFog() end
+})
+
+    Tabs.Other:Section({ Title = "其他" })
+    Tabs.Other:Button({ Title = "一般飛行",
+        Callback = function()
+            WindUI:Notify({ Title = "Normal FLY GUI", Content = "正在載入 Normal FLY GUI...", Duration = 3 })
+            loadstring(game:HttpGet(
+                "https://raw.githubusercontent.com/xuez1025/script/refs/heads/main/normal%20fly%20v3"
+            ))()
+        end
+    })
+    Tabs.Other:Button({ Title = "幽靈飛行",
+        Callback = function()
+            WindUI:Notify({ Title = "Ghost FLY GUI", Content = "正在載入 Ghost FLY GUI...", Duration = 3 })
+            loadstring(game:HttpGet(
+                "https://raw.githubusercontent.com/xuez1025/script/refs/heads/main/ghost%20fly%20v3"
+            ))()
+        end
+    })
 end
 
 -- ================= WindUI 執行區 =================
@@ -563,27 +1185,31 @@ WindUI:Popup({
                           WindUI:Notify({ Title = LocalPlayer.Name, Content = "ID: " .. LocalPlayer.UserId, Duration = 3 })
                       end
                   },
-                  Acrylic       = false,
-                  HideSearchBar = false,
-                  SideBarWidth  = 200,
-                  OpenButton = {
-                      Title           = "Xu-hub",
-                      CornerRadius    = UDim.new(1, 0),
-                      StrokeThickness = 3,
-                      Enabled         = true,
-                      Draggable       = true,
-                      Color           = ColorSequence.new(Color3.fromHex("#7F00FF"), Color3.fromHex("#00C6FF")),
-                  }
+        Acrylic       = false,
+        HideSearchBar = false,
+        SideBarWidth  = 200,
+        OpenButton = {
+            Title           = "Xu-hub",
+            CornerRadius    = UDim.new(1, 0),
+            StrokeThickness = 3,
+            Enabled         = true,
+            OnlyMobile      = false,
+            Draggable       = true,
+            OnlyIcon        = false,
+            Color           = ColorSequence.new(Color3.fromHex("#7F00FF"), Color3.fromHex("#00C6FF")),
+        }
+				  
               })
               
-              local Tabs = {
-                  General  = Window:Tab({ Title = "通用",   Icon = "house"    }),
-                  Server   = Window:Tab({ Title = "Server", Icon = "server"   }),
-                  Status   = Window:Tab({ Title = "狀態",   Icon = "activity" }),
-                  Settings = Window:Tab({ Title = "設定",   Icon = "settings" }),
-                  Teleport = Window:Tab({ Title = "傳送",   Icon = "map-pin"  }),
-                  Other    = Window:Tab({ Title = "其他",   Icon = "ellipsis" }),
-              }
+local Tabs = {
+    Announcement = Window:Tab({ Title = "公告說明", Icon = "megaphone" }),
+    General      = Window:Tab({ Title = "通用",     Icon = "house"     }),
+    Server       = Window:Tab({ Title = "Server",   Icon = "server"    }),
+    Status       = Window:Tab({ Title = "狀態",     Icon = "activity"  }),
+    Settings     = Window:Tab({ Title = "設定",     Icon = "settings"  }),
+    Teleport     = Window:Tab({ Title = "傳送",     Icon = "map-pin"   }),
+    Other        = Window:Tab({ Title = "其他",     Icon = "ellipsis"  }),
+}
               
               -- 呼叫初始化函數來填滿內容
               InitMainHub(Window, Tabs)
