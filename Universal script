@@ -885,13 +885,17 @@ local function InitMainHub(Window, Tabs)
     Tabs.Player:Button({
         Title = "變身(視覺化)",
         Desc = "變身為該玩家樣子(無法完全變身)",
-        Callback = function() ApplyAppearance() end
+        Callback = function() 
+		WindUI:Notify({ Title = "變身中", Content = "無法完全變身", Duration = 3 })
+		ApplyAppearance() end
     })
 
     Tabs.Player:Button({
         Title = "恢復",
         Desc = "恢復原本的外觀",
-        Callback = function() RestoreOriginalAppearance() end
+        Callback = function()
+		WindUI:Notify({ Title = "已恢復外觀",Content = "完全恢復外觀",Duration = 3 })
+		RestoreOriginalAppearance() end
     })
 
     Tabs.Player:Section({ Title = "ESP Player" })
@@ -962,19 +966,25 @@ local function InitMainHub(Window, Tabs)
     Tabs.Server:Button({ 
         Title = "加入少人伺服器",
         Desc = "少於5人",
-        Callback = function() ServerCore:FindAndHop("small") end
+        Callback = function()
+		WindUI:Notify({ Title = "加入少人伺服器", Content = "正在切換伺服器中..", Duration = 1 })
+		ServerCore:FindAndHop("small") end
     })
 
     Tabs.Server:Button({ 
         Title = "伺服器跳轉",
         Desc = "尋找其他伺服器",
-        Callback = function() ServerCore:FindAndHop("random") end
+        Callback = function()
+		WindUI:Notify({ Title = "伺服器跳轉", Content = "正在切換伺服器中..", Duration = 1 })
+		ServerCore:FindAndHop("random") end
     })
 
     Tabs.Server:Button({ 
         Title = "重進當前伺服器",
         Desc = "重新加入該伺服器",
-        Callback = function() ServerCore:TeleportToServer(JobId) end
+        Callback = function()
+		WindUI:Notify({ Title = "重進當前伺服器", Content = "正在重進中..", Duration = 1 })
+		ServerCore:TeleportToServer(JobId) end
     })
 
     Tabs.Status:Section({ Title = "狀態:", TextSize = 24, FontWeight = Enum.FontWeight.SemiBold })
@@ -1000,7 +1010,7 @@ local function InitMainHub(Window, Tabs)
         Title = "Copy Discord Link",
         Callback = function()
             setclipboard("https://discord.gg/ptec6vhQtf")
-            WindUI:Notify({ Title = "Discord Link", Content = "已成功複製 Discord 連結！", Duration = 3 })
+            WindUI:Notify({ Title = "Discord Link", Content = "已成功複製 Discord 連結", Duration = 3 })
         end
     })
 
@@ -1076,7 +1086,9 @@ local function InitMainHub(Window, Tabs)
     Tabs.Settings:Button({
         Title = "Remove Fog",
         Desc = "按一次啟用 Remove Fog",
-        Callback = function() RemoveFog() end
+        Callback = function()
+		WindUI:Notify({ Title = "Remove Fog", Content = "已移除迷霧效果", Duration = 3 })
+		RemoveFog() end
     })
 
     Tabs.Settings:Toggle({
@@ -1105,14 +1117,14 @@ local function InitMainHub(Window, Tabs)
                     root.CFrame = lastDeathPos
                     WindUI:Notify({
                         Title = "傳送成功",
-                        Content = "已成功回到上次死亡地點。",
+                        Content = "已成功回到上次死亡地點",
                         Duration = 3
                     })
                 end
             else
                 WindUI:Notify({
                     Title = "傳送失敗",
-                    Content = "目前沒有記錄到任何死亡位置！",
+                    Content = "目前沒有記錄到任何死亡位置",
                     Duration = 3
                 })
             end
