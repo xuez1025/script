@@ -67,6 +67,35 @@ local FTC = { Enabled = false, Speed = 350, Target = nil, Conn = nil, NoclipConn
 local player = game.Players.LocalPlayer
 local mouse = player:GetMouse()
 local tpEnabled = false
+
+local HiddenUIs = {} -- 用於暫存原本開啟的 UI
+
+-- 隱藏/恢復函數
+local function ToggleGameUI(state)
+    local PlayerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    
+    if state then
+        -- 隱藏邏輯
+        for _, gui in pairs(PlayerGui:GetChildren()) do
+            -- 排除自己的腳本 UI (假設你的 UI 名字叫 "MyCustomGui")
+            -- 同時只處理原本是開啟狀態的 UI
+            if gui:IsA("ScreenGui") and gui.Enabled and gui.Name ~= "MyCustomGui" then
+                table.insert(HiddenUIs, gui)
+                gui.Enabled = false
+            end
+        end
+    else
+        -- 恢復邏輯
+        for _, gui in pairs(HiddenUIs) do
+            if gui and gui.Parent then
+                gui.Enabled = true
+            end
+        end
+        -- 清空清單，避免重複疊加
+        table.clear(HiddenUIs)
+    end
+end
+
 -- 傳送邏輯：監聽滑鼠點擊
 mouse.Button1Down:Connect(function()
     if tpEnabled then
@@ -811,7 +840,7 @@ Tabs.General:Toggle({
         Callback = function(state) setNoclipState(state) end
     })
 	    Tabs.General:Slider({ Title = "碰撞箱", Desc = "調整碰撞箱大小",
-        Value = { Min = 1, Max = 20, Default = Hitbox.Size },
+        Value = { Min = 1, Max = 50, Default = Hitbox.Size },
         Callback = function(value) Hitbox.Size = value; Hitbox:ApplyAll() end
     })
 Tabs.General:Slider({ 
@@ -1181,6 +1210,15 @@ Tabs.Settings:Button({
     Title = "Remove Fog",
     Desc = "按一次啟用 Remove Fog",
     Callback = function() RemoveFog() end
+})
+
+Tabs.Settings:Toggle({
+    Title = "隱藏UI",
+    Desc = "隱藏畫面上的東西",
+    Value = false,
+    Callback = function(state)
+        ToggleGameUI(state)
+    end
 })
 
     Tabs.Teleport:Section({ Title = "傳送" })
