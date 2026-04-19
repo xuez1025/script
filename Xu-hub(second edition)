@@ -1,4 +1,3 @@
---// Services
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -10,76 +9,67 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local Lighting          = game:GetService("Lighting")
 local TweenService      = game:GetService("TweenService")
 
---// Local Variables
 local LocalPlayer = Players.LocalPlayer
 local PlaceId     = game.PlaceId
 local JobId       = game.JobId
 local Camera      = workspace.CurrentCamera
 local Terrain     = workspace:FindFirstChildWhichIsA("Terrain")
 
---// Remote
-local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
+local CommF             = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
 local ServerBrowserRemote = ReplicatedStorage:WaitForChild("__ServerBrowser")
 
---// World Check
 local World1 = PlaceId == 2753915549 or PlaceId == 85211729168715
 local World2 = PlaceId == 4442272183 or PlaceId == 79091703265657
 local World3 = PlaceId == 7449423635 or PlaceId == 100117331123089
 
---// WindUI
 local WindUI = loadstring(game:HttpGet(
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
 ))()
 
+-- ServerCore
 local ServerCore = {}
 
--- 1. 跳轉到指定伺服器
 function ServerCore:TeleportToServer(jobId)
-    if not jobId or jobId == JobId then return end
-    
+    if not jobId or jobId == "" then return end
     task.spawn(function()
+        if ServerBrowserRemote then
+            local success = pcall(function()
+                ServerBrowserRemote:InvokeServer("teleport", jobId)
+            end)
+            if success then return end
+        end
         pcall(function()
-            ServerBrowserRemote:InvokeServer("teleport", jobId)
+            TeleportService:TeleportToPlaceInstance(PlaceId, jobId, LocalPlayer)
         end)
     end)
 end
 
 function ServerCore:FindAndHop(mode)
     task.spawn(function()
+        local url = "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
         local success, response = pcall(function()
-            return HttpService:JSONDecode(game:HttpGet(
-                "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
-            ))
+            return HttpService:JSONDecode(game:HttpGet(url))
         end)
-
-        if not (success and response and response.data) then
-            return
-        end
-
+        if not (success and response and response.data) then return end
         local validServers = {}
-
         for _, server in ipairs(response.data) do
             if server.id ~= JobId and server.playing < server.maxPlayers then
-                table.insert(validServers, server.id)
+                table.insert(validServers, {id = server.id, count = server.playing})
             end
         end
-
-        if #validServers == 0 then
-            return
-        end
-
+        if #validServers == 0 then return end
         local targetJobId
         if mode == "small" then
-            targetJobId = validServers[1]
+            table.sort(validServers, function(a, b) return a.count < b.count end)
+            targetJobId = validServers[1].id
         else
-            -- 隨機跳服
-            targetJobId = validServers[math.random(1, #validServers)]
+            targetJobId = validServers[math.random(1, #validServers)].id
         end
-
         self:TeleportToServer(targetJobId)
     end)
 end
 
+-- Global Config
 local TargetJobID = ""
 
 _G.Config = _G.Config or {}
@@ -88,7 +78,12 @@ _G.Config.FastAttack = _G.Config.FastAttack or {
     SelectFruits = "Kitsune",
     FruitsM1Delay = 0.05
 }
+_G.Config.Dash = _G.Config.Dash or {
+    Enabled = false,
+    DashDistance = 50
+}
 
+-- State Variables
 local ESP_ENABLED = false
 local ESP_COLOR   = Color3.fromRGB(30, 30, 30)
 local TEXT_COLOR  = Color3.fromRGB(255, 255, 255)
@@ -169,7 +164,7 @@ local Settings = {
     MaxTargets     = 20,
 }
 
-local CurrentKey = "G"
+local CurrentKey  = "G"
 local KeyDisabled = false
 
 local character, root
@@ -178,6 +173,29 @@ local function setupCharacter(char)
     character = char
     root      = char:WaitForChild("HumanoidRootPart")
     humanoid  = char:WaitForChild("Humanoid")
+end
+
+-- Dash
+local function UpdateDash()
+    local char = LocalPlayer.Character
+    if not char then return end
+    if _G.Config.Dash.Enabled then
+        char:SetAttribute("DashLength",    _G.Config.Dash.DashDistance)
+        char:SetAttribute("DashLengthAir", _G.Config.Dash.DashDistance)
+    else
+        char:SetAttribute("DashLength",    1)
+        char:SetAttribute("DashLengthAir", 1)
+    end
+end
+
+local function onCharacterAdded_Dash(char)
+    task.wait(0.1)
+    UpdateDash()
+end
+
+LocalPlayer.CharacterAdded:Connect(onCharacterAdded_Dash)
+if LocalPlayer.Character then
+    task.spawn(onCharacterAdded_Dash, LocalPlayer.Character)
 end
 
 -- ESP
@@ -284,51 +302,6 @@ local function setupPlayerESP(p)
         if ESP_ENABLED then createESP(p) end
     end)
     if ESP_ENABLED and p.Character then createESP(p) end
-end
-
---// LocalScript
-local Players = game:GetService("Players")
-local player = Players.LocalPlayer
-
--- =============================================
---               核心邏輯部分（不依賴 UI）
--- =============================================
-
--- 預設配置（全域保存）
-if not _G.Config then
-    _G.Config = {}
-end
-if not _G.Config.Dash then
-    _G.Config.Dash = {
-        Enabled = false,
-        DashDistance = 50
-    }
-end
-
-local function UpdateDash()
-    local character = player.Character
-    if not character then return end
-    
-    if _G.Config.Dash.Enabled then
-        character:SetAttribute("DashLength", _G.Config.Dash.DashDistance)
-        character:SetAttribute("DashLengthAir", _G.Config.Dash.DashDistance)
-    else
-        character:SetAttribute("DashLength", 1)
-        character:SetAttribute("DashLengthAir", 1)
-    end
-end
-
--- 角色重生時重新套用
-local function onCharacterAdded(char)
-    task.wait(0.1)   -- 等待屬性系統初始化
-    UpdateDash()
-end
-
-player.CharacterAdded:Connect(onCharacterAdded)
-
--- 初次載入時也執行一次
-if player.Character then
-    task.spawn(onCharacterAdded, player.Character)
 end
 
 -- Noclip
@@ -442,7 +415,7 @@ local function SetZoom(value)
     LocalPlayer.CameraMaxZoomDistance = value
 end
 
--- FastAttack
+-- Attack Remotes
 local Net            = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net")
 local RegisterAttack = Net:WaitForChild("RE/RegisterAttack")
 local RegisterHit    = Net:WaitForChild("RE/RegisterHit")
@@ -454,7 +427,7 @@ local function IsAlive(char)
     return hum and hum.Health > 0
 end
 
--- Shared fly helpers
+-- Fly Helpers
 local function setPlatformStand(state)
     local char = LocalPlayer.Character
     if not char then return end
@@ -508,7 +481,11 @@ end
 
 -- FlyToCoord (FTC)
 local function FTC_Enable(targetVec3)
-    if FTC.Enabled then FTC_Disable() end
+    if FTC.Enabled then
+        FTC.Enabled = false
+        if FTC.Conn       then FTC.Conn:Disconnect();       FTC.Conn       = nil end
+        if FTC.NoclipConn then FTC.NoclipConn:Disconnect(); FTC.NoclipConn = nil end
+    end
     FTC.Enabled = true
     FTC.Target  = targetVec3
     setPlatformStand(true)
@@ -952,7 +929,7 @@ local function removeLava()
     end
 end
 
--- Fun helpers
+-- Fun Helpers
 local scaleFactor   = 2
 local tweenInfo     = TweenInfo.new(1, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
 local originalSizes = {}
@@ -1173,9 +1150,7 @@ local TeleportData = {
     }
 }
 
--- ============================================================================
--- 新型虛空閃避系統（改進版） - 只改Y軸，視角不亂跳
--- ============================================================================
+-- Void Dodge System
 local VoidState = {
     Enabled       = false,
     WaitTime      = 0.45,
@@ -1208,12 +1183,9 @@ local voidCharacter, voidRoot, rootConnection
 local function flashDown()
     if not voidRoot or VoidState.IsTeleporting then return end
     if not voidCharacter:FindFirstChild("Humanoid") or voidCharacter.Humanoid.Health <= 0 then return end
-    
     VoidState.IsTeleporting = true
-    
     local originalCFrame = voidRoot.CFrame
     local downPos = Vector3.new(originalCFrame.Position.X, VoidState.VoidY, originalCFrame.Position.Z)
-    
     local connection
     connection = RunService.Heartbeat:Connect(function()
         if voidRoot and VoidState.IsTeleporting then
@@ -1221,19 +1193,13 @@ local function flashDown()
             voidRoot.AssemblyLinearVelocity = Vector3.zero
         end
     end)
-    
     task.wait(VoidState.VoidTime)
-    
-    if connection and connection.Connected then
-        connection:Disconnect()
-    end
-    
+    if connection and connection.Connected then connection:Disconnect() end
     if voidRoot and voidCharacter.Humanoid.Health > 0 then
         voidRoot.CFrame = originalCFrame + Vector3.new(0, 0.5, 0)
         voidRoot.AssemblyLinearVelocity = Vector3.zero
         voidRoot.AssemblyAngularVelocity = Vector3.zero
     end
-    
     task.wait(0.2)
     VoidState.IsTeleporting = false
 end
@@ -1241,24 +1207,17 @@ end
 local function setupRootListener()
     if rootConnection then rootConnection:Disconnect() end
     if not voidRoot then return end
-    
     rootConnection = voidRoot.ChildAdded:Connect(function(child)
         if not VoidState.Enabled or VoidState.IsTeleporting then return end
         if not child:IsA("Sound") then return end
-        
         local name = child.Name:lower()
-        
         for _, exclude in ipairs(excludeKeywords) do
             if name:find(exclude) then return end
         end
-        
         if child.TimeLength < 0.7 or child.Volume < 0.6 then return end
-        
         for _, keyword in ipairs(skillKeywords) do
             if name:find(keyword) then
-                task.delay(VoidState.WaitTime, function()
-                    flashDown()
-                end)
+                task.delay(VoidState.WaitTime, function() flashDown() end)
                 break
             end
         end
@@ -1270,7 +1229,6 @@ local function initVoidSystem()
     voidRoot = voidCharacter:WaitForChild("HumanoidRootPart")
     task.wait(0.5)
     setupRootListener()
-    
     LocalPlayer.CharacterAdded:Connect(function(newChar)
         voidCharacter = newChar
         voidRoot = newChar:WaitForChild("HumanoidRootPart")
@@ -1279,11 +1237,25 @@ local function initVoidSystem()
     end)
 end
 
--- InitMainHub
+-- Fruit Attack Remote
+local function GetFruitsRemote()
+    local char    = LocalPlayer.Character
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    local fruitName = _G.Config.FastAttack.SelectFruits
+    local toolName  = fruitName .. "-" .. fruitName
+    local tool = nil
+
+    if char    then tool = char:FindFirstChild(toolName) end
+    if not tool and backpack then tool = backpack:FindFirstChild(toolName) end
+
+    if tool then return tool:FindFirstChild("LeftClickRemote", true) end
+    return nil
+end
+
+-- Main Hub
 local function InitMainHub()
     setupCharacter(LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait())
     LocalPlayer.CharacterAdded:Connect(setupCharacter)
-
     LocalPlayer.CameraMaxZoomDistance = CurrentZoom
 
     for _, p in ipairs(Players:GetPlayers()) do setupPlayerESP(p) end
@@ -1325,59 +1297,58 @@ local function InitMainHub()
         end
     end)
 
-local function PerformAttack()
-    if not _G.FastAttack then return end
-    local char = LocalPlayer.Character
-    local r    = char and char:FindFirstChild("HumanoidRootPart")
-    if not r then return end
-    local targets = {}
-    for _, folder in ipairs({ EnemiesFolder, CharactersFolder }) do
-        for _, obj in ipairs(folder:GetChildren()) do
-            if obj ~= char and IsAlive(obj) then
-                local head = obj:FindFirstChild("Head")
-                if head and (head.Position - r.Position).Magnitude <= Settings.Distance then
-                    table.insert(targets, { obj, head })
-                    if #targets >= Settings.MaxTargets then break end
+    -- Attack Logic
+    local function PerformAttack()
+        if not _G.FastAttack then return end
+        local char = LocalPlayer.Character
+        local r    = char and char:FindFirstChild("HumanoidRootPart")
+        if not r then return end
+        local targets = {}
+        for _, folder in ipairs({ EnemiesFolder, CharactersFolder }) do
+            for _, obj in ipairs(folder:GetChildren()) do
+                if obj ~= char and IsAlive(obj) then
+                    local head = obj:FindFirstChild("Head")
+                    if head and (head.Position - r.Position).Magnitude <= Settings.Distance then
+                        table.insert(targets, { obj, head })
+                        if #targets >= Settings.MaxTargets then break end
+                    end
                 end
             end
+            if #targets >= Settings.MaxTargets then break end
         end
-        if #targets >= Settings.MaxTargets then break end
+        if #targets > 0 then
+            RegisterAttack:FireServer(0)
+            RegisterHit:FireServer(targets[1][2], targets)
+        end
     end
-    if #targets > 0 then
-        RegisterAttack:FireServer(0)
-        RegisterHit:FireServer(targets[1][2], targets)
+
+    local manualAttackConn = nil
+
+    local function startManualAttack()
+        if manualAttackConn then return end
+        manualAttackConn = UserInputService.InputBegan:Connect(function(input, gpe)
+            if gpe then return end
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                PerformAttack()
+            end
+        end)
     end
-end
 
--- 手動攻擊連線（關閉自動攻擊時啟用）
-local manualAttackConn = nil
+    local function stopManualAttack()
+        if manualAttackConn then
+            manualAttackConn:Disconnect()
+            manualAttackConn = nil
+        end
+    end
 
-local function startManualAttack()
-    if manualAttackConn then return end
-    manualAttackConn = UserInputService.InputBegan:Connect(function(input, gpe)
-        if gpe then return end
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            PerformAttack()
+    task.spawn(function()
+        while true do
+            if _G.FastAttack and Settings.AutoClick then
+                PerformAttack()
+            end
+            task.wait(Settings.AttackInterval)
         end
     end)
-end
-
-local function stopManualAttack()
-    if manualAttackConn then
-        manualAttackConn:Disconnect()
-        manualAttackConn = nil
-    end
-end
-
--- 自動攻擊主迴圈
-task.spawn(function()
-    while true do
-        if _G.FastAttack and Settings.AutoClick then
-            PerformAttack()
-        end
-        task.wait(Settings.AttackInterval)
-    end
-end)
 
     task.spawn(function()
         while task.wait(CHECK_INTERVAL) do
@@ -1419,87 +1390,23 @@ end)
         tool:Activate()
     end)
 
-    initVoidSystem()
-
-local flyjumpConnection -- 用於儲存連線，方便後續管理或切換
-
--- ==================== 核心功能 (不要動這部分) ====================
-local function GetFruitsRemote()
-    local char = LocalPlayer.Character
-    local backpack = LocalPlayer:FindFirstChild("Backpack")
-    local tool = nil
-
-    -- 在角色身上找
-    if char then
-        if _G.Config.FastAttack.SelectFruits == "Kitsune" then
-            tool = char:FindFirstChild("Kitsune-Kitsune")
-        elseif _G.Config.FastAttack.SelectFruits == "Control" then
-            tool = char:FindFirstChild("Control-Control")
-        elseif _G.Config.FastAttack.SelectFruits == "Dragon" then
-            tool = char:FindFirstChild("Dragon-Dragon")
-        elseif _G.Config.FastAttack.SelectFruits == "Gas" then
-            tool = char:FindFirstChild("Gas-Gas")
-        elseif _G.Config.FastAttack.SelectFruits == "Pain" then
-            tool = char:FindFirstChild("Pain-Pain")
-        elseif _G.Config.FastAttack.SelectFruits == "Blade" then
-            tool = char:FindFirstChild("Blade-Blade")
-        elseif _G.Config.FastAttack.SelectFruits == "T-Rex" then
-            tool = char:FindFirstChild("T-Rex-T-Rex")
-        elseif _G.Config.FastAttack.SelectFruits == "Yeti" then
-            tool = char:FindFirstChild("Yeti-Yeti")
-        elseif _G.Config.FastAttack.SelectFruits == "Tiger" then
-            tool = char:FindFirstChild("Tiger-Tiger")
-        end
-
-        if tool then
-            return tool:FindFirstChild("LeftClickRemote", true)
-        end
-    end
-
-    -- 在背包裡找
-    if backpack then
-        if _G.Config.FastAttack.SelectFruits == "Kitsune" then
-            tool = backpack:FindFirstChild("Kitsune-Kitsune")
-        elseif _G.Config.FastAttack.SelectFruits == "Control" then
-            tool = backpack:FindFirstChild("Control-Control")
-        elseif _G.Config.FastAttack.SelectFruits == "Dragon" then
-            tool = backpack:FindFirstChild("Dragon-Dragon")
-        elseif _G.Config.FastAttack.SelectFruits == "Gas" then
-            tool = backpack:FindFirstChild("Gas-Gas")
-        elseif _G.Config.FastAttack.SelectFruits == "Pain" then
-            tool = backpack:FindFirstChild("Pain-Pain")
-        elseif _G.Config.FastAttack.SelectFruits == "Blade" then
-            tool = backpack:FindFirstChild("Blade-Blade")
-        elseif _G.Config.FastAttack.SelectFruits == "T-Rex" then
-            tool = backpack:FindFirstChild("T-Rex-T-Rex")
-        elseif _G.Config.FastAttack.SelectFruits == "Yeti" then
-            tool = backpack:FindFirstChild("Yeti-Yeti")
-        elseif _G.Config.FastAttack.SelectFruits == "Tiger" then
-            tool = backpack:FindFirstChild("Tiger-Tiger")
-        end
-
-        if tool then
-            return tool:FindFirstChild("LeftClickRemote", true)
-        end
-    end
-    return nil
-end
-
--- ==================== Fast Attack Fruits M1 核心循環 ====================
-task.spawn(function()
-    while task.wait(_G.Config.FastAttack.FruitsM1Delay) do
-        if _G.Config.FastAttack.FruitsM1 == true then
-            local char = LocalPlayer.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            local remote = GetFruitsRemote()
-
-            if char and hrp and remote then
-                local direction = -hrp.CFrame.UpVector
-                remote:FireServer(direction, 2, true)
+    task.spawn(function()
+        while task.wait(_G.Config.FastAttack.FruitsM1Delay) do
+            if _G.Config.FastAttack.FruitsM1 then
+                local char   = LocalPlayer.Character
+                local hrp    = char and char:FindFirstChild("HumanoidRootPart")
+                local remote = GetFruitsRemote()
+                if char and hrp and remote then
+                    local direction = -hrp.CFrame.UpVector
+                    remote:FireServer(direction, 2, true)
+                end
             end
         end
-    end
-end)
+    end)
+
+    initVoidSystem()
+
+    local flyjumpConnection = nil
 
     -- UI
     local Window = WindUI:CreateWindow({
@@ -1545,7 +1452,7 @@ end)
         Other    = Window:Tab({ Title = "其他",   Icon = "ellipsis" }),
     }
 
-    -- General
+    -- General Tab
     Tabs.General:Section({ Title = "通用" })
     Tabs.General:Toggle({ Title = "ESP", Desc = "顯示玩家名稱、血量與距離", Value = false,
         Callback = function(state)
@@ -1573,261 +1480,112 @@ end)
         Callback = function(value) SetZoom(value) end
     })
 
-    Tabs.Server:Section({ Title = "加入伺服器" })
-Tabs.Server:Input({
-    Title = "輸入 伺服器ID",
-    Placeholder = "在此貼上伺服器ID...",
-    Callback = function(text)
-        TargetJobID = text
-    end
-})
+    -- Server Tab
+    Tabs.Server:Section({ Title = "手動加入伺服器" })
+    Tabs.Server:Input({
+        Title = "伺服器 ID",
+        Placeholder = "在此貼上 JobId...",
+        Callback = function(text) TargetJobID = text end
+    })
+    Tabs.Server:Button({
+        Title = "立即加入",
+        Desc = "加入所輸入的伺服器",
+        Callback = function()
+            if TargetJobID ~= "" then ServerCore:TeleportToServer(TargetJobID) end
+        end
+    })
+    Tabs.Server:Section({ Title = "自動加入伺服器" })
+    Tabs.Server:Button({
+        Title = "加入少人伺服器", Desc = "少於5人",
+        Callback = function()
+            WindUI:Notify({ Title = "加入少人伺服器", Content = "正在切換伺服器中..", Duration = 1 })
+            ServerCore:FindAndHop("small")
+        end
+    })
+    Tabs.Server:Button({
+        Title = "伺服器跳轉", Desc = "尋找其他伺服器",
+        Callback = function()
+            WindUI:Notify({ Title = "伺服器跳轉", Content = "正在切換伺服器中..", Duration = 1 })
+            ServerCore:FindAndHop("random")
+        end
+    })
+    Tabs.Server:Button({
+        Title = "重進當前伺服器", Desc = "重新加入該伺服器",
+        Callback = function()
+            WindUI:Notify({ Title = "重進當前伺服器", Content = "正在重進中..", Duration = 1 })
+            ServerCore:TeleportToServer(JobId)
+        end
+    })
 
-Tabs.Server:Button({
-    Title = "加入",
-    Desc = "加入該伺服器",
-    Callback = function()
-        if TargetJobID ~= "" then
-            local args = {
-                "teleport",
-                TargetJobID
-            }
-            
-            -- 執行你提供的遠端函數邏輯
-            local serverBrowser = game:GetService("ReplicatedStorage"):FindFirstChild("__ServerBrowser")
-            
-            if serverBrowser then
-                serverBrowser:InvokeServer(unpack(args))
-            else
-                WindUI:Notify({
-                    Title = "error",
-                    Content = "找不到該伺服器 請再次確認是否有誤",
-                    Duration = 5
-                })
+    -- Status Tab
+    Tabs.Status:Section({ Title = "狀態:", TextSize = 24, FontWeight = Enum.FontWeight.SemiBold })
+    Tabs.Status:Space()
+    local PlayerSection   = Tabs.Status:Section({ Title = "Players: ...",   TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+    local TimeSection     = Tabs.Status:Section({ Title = "Local Time: ...", TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+    local PingSection     = Tabs.Status:Section({ Title = "Ping: ...",      TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+    local FPSSection      = Tabs.Status:Section({ Title = "FPS: ...",       TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+    local GameTimeSection = Tabs.Status:Section({ Title = "Game Time: ...", TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+    Tabs.Status:Section({ Title = "Discord: https://discord.gg/ptec6vhQtf", TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
+    Tabs.Status:Button({
+        Title = "Copy Discord Link",
+        Callback = function()
+            setclipboard("https://discord.gg/ptec6vhQtf")
+            WindUI:Notify({ Title = "Discord Link", Content = "已成功複製 Discord 連結！", Duration = 3 })
+        end
+    })
+
+    local frameCount = 0
+    local lastUpdate = tick()
+    local currentFps = 0
+    RunService.RenderStepped:Connect(function() frameCount += 1 end)
+    task.spawn(function()
+        while true do
+            local now = tick()
+            local deltaTime = now - lastUpdate
+            task.wait(0.5)
+            if deltaTime >= 1 then
+                currentFps = frameCount / deltaTime
+                frameCount = 0
+                lastUpdate = now
             end
-        else
-            WindUI:Notify({
-                Title = "error",
-                Content = "請先輸入正確伺服器ID",
-                Duration = 3
-            })
+            if FPSSection      then FPSSection:SetTitle(string.format("FPS: %.0f/s", currentFps)) end
+            if PlayerSection   then PlayerSection:SetTitle(string.format("Players: %d/%d", #Players:GetPlayers(), Players.MaxPlayers or 20)) end
+            local t = os.date("*t")
+            if TimeSection     then TimeSection:SetTitle(string.format("Local Time: %04d-%02d-%02d %02d:%02d:%02d", t.year, t.month, t.day, t.hour, t.min, t.sec)) end
+            if PingSection     then PingSection:SetTitle(string.format("Ping: %.0f ms", LocalPlayer:GetNetworkPing() * 1000)) end
+            local gt = math.floor(Workspace.DistributedGameTime + 0.5)
+            if GameTimeSection then GameTimeSection:SetTitle(string.format("Game Time: %02d:%02d:%02d", math.floor(gt / 3600), math.floor(gt / 60) % 60, gt % 60)) end
         end
-    end
-})
-    -- Server
-    Tabs.Server:Section({ Title = "Server" })
--- 切換伺服器 (隨機)
-Tabs.Server:Button({ 
-    Title = "切換伺服器",
-    Callback = function()
-        ServerCore:FindAndHop("random")
-        WindUI:Notify({ Title = "傳送中", Content = "正在尋找新伺服器...", Duration = 3 })
-    end
-})
+    end)
 
--- 重進伺服器 (當前伺服器)
-Tabs.Server:Button({ 
-    Title = "重進伺服器",
-    Callback = function()
-        ServerCore:TeleportToServer(game.JobId)
-        WindUI:Notify({ Title = "重進伺服器", Content = "正在嘗試重新連接...", Duration = 3 })
-    end
-})
-
--- 加入少人伺服器
-Tabs.Server:Button({ 
-    Title = "加入少人伺服器",
-    Callback = function()
-        ServerCore:FindAndHop("small")
-        WindUI:Notify({ Title = "傳送到少人伺服器", Content = "正在尋找玩家最少的伺服器...", Duration = 3 })
-    end
-})
-
-    -- Status
--- 初始化服務與變數
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-local LocalPlayer = Players.LocalPlayer
-
--- 建立 UI 區塊 (假設 Tabs.Status 與 WindUI 已定義)
-Tabs.Status:Section({ Title = "狀態:", TextSize = 24, FontWeight = Enum.FontWeight.SemiBold })
-Tabs.Status:Space()
-
-local PlayerSection   = Tabs.Status:Section({ Title = "Players: ...",   TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
-local TimeSection     = Tabs.Status:Section({ Title = "Local Time: ...", TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
-local PingSection     = Tabs.Status:Section({ Title = "Ping: ...",      TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
-local FPSSection      = Tabs.Status:Section({ Title = "FPS: ...",       TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
-local GameTimeSection = Tabs.Status:Section({ Title = "Game Time: ...",  TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
-
-Tabs.Status:Section({ Title = "Discord: https://discord.gg/ptec6vhQtf", TextSize = 18, TextTransparency = 0.35, FontWeight = Enum.FontWeight.Medium })
-Tabs.Status:Button({ 
-    Title = "Copy Discord Link",
-    Callback = function()
-        setclipboard("https://discord.gg/ptec6vhQtf")
-        WindUI:Notify({ Title = "Discord Link", Content = "已成功複製 Discord 連結！", Duration = 3 })
-    end
-})
-
--- 效能監測變數
-local frameCount = 0
-local lastUpdate = tick()
-local currentFps = 0
-
--- FPS 計數器
-RunService.RenderStepped:Connect(function()
-    frameCount += 1
-end)
-
--- 主更新迴圈
-task.spawn(function()
-    while true do
-        local now = tick()
-        local deltaTime = now - lastUpdate
-        
-        -- 每 0.5 秒更新一次 UI，避免過度消耗效能
-        task.wait(0.5)
-        
-        -- 1. 更新 FPS (計算過去一段時間內的平均幀率)
-        if deltaTime >= 1 then
-            currentFps = frameCount / deltaTime
-            frameCount = 0
-            lastUpdate = now
-        end
-        if FPSSection then FPSSection:SetTitle(string.format("FPS: %.0f/s", currentFps)) end
-
-        -- 2. 更新人數
-        if PlayerSection then 
-            PlayerSection:SetTitle(string.format("Players: %d/%d", #Players:GetPlayers(), Players.MaxPlayers or 20)) 
-        end
-
-        -- 3. 更新本地時間
-        local t = os.date("*t")
-        if TimeSection then 
-            TimeSection:SetTitle(string.format("Local Time: %04d-%02d-%02d %02d:%02d:%02d",
-                t.year, t.month, t.day, t.hour, t.min, t.sec))
-        end
-
-        -- 4. 更新 Ping (修正倍率為 1000)
-        if PingSection then 
-            local ping = LocalPlayer:GetNetworkPing() * 1000
-            PingSection:SetTitle(string.format("Ping: %.0f ms", ping))
-        end
-
-        -- 5. 更新遊戲運行時間
-        local gt = math.floor(Workspace.DistributedGameTime + 0.5)
-        if GameTimeSection then 
-            GameTimeSection:SetTitle(string.format("Game Time: %02d:%02d:%02d",
-                math.floor(gt / 3600), math.floor(gt / 60) % 60, gt % 60))
-        end
-    end
-end)
-
-    -- PVP
+    -- PVP Tab
     Tabs.PVP:Section({ Title = "PVP" })
-Tabs.PVP:Toggle({ Title = "自動攻擊", Desc = "開啟:自動攻擊/關閉:手動攻擊", Value = true,
-    Callback = function(state)
-        Settings.AutoClick = state
-        if state then
-            stopManualAttack()
-        else
-            startManualAttack()
+    Tabs.PVP:Toggle({ Title = "自動攻擊", Desc = "開啟:自動攻擊/關閉:手動攻擊", Value = true,
+        Callback = function(state)
+            Settings.AutoClick = state
+            if state then stopManualAttack() else startManualAttack() end
         end
-    end
-})
-Tabs.PVP:Button({
-    Title = "刷新自動攻擊",
-    Desc = "重置攻擊系統",
-	        Locked = true,
-        LockedTitle = "Can't Fix",
-    Callback = function()
-        -- 停止所有攻擊
-        _G.FastAttack = false
-        getgenv().AUTO_ATTACK_ENABLED = false
-        if manualAttackConn then
-            manualAttackConn:Disconnect()
-            manualAttackConn = nil
-        end
-        attackTimer = 0
-
-        task.wait(0.3)
-
-        -- 重新套用角色與目標參考
-        local char = LocalPlayer.Character
-        if char then
-            setupCharacter(char)
-        end
-
-        -- 重新掃描 Enemies / Characters 資料夾
-        EnemiesFolder    = workspace:WaitForChild("Enemies")
-        CharactersFolder = workspace:WaitForChild("Characters")
-
-        -- 恢復攻擊狀態
-        _G.FastAttack = true
-
-        -- 若原本 Fruit M1 是開啟的，同步恢復
-        if getgenv().AUTO_ATTACK_ENABLED then
-            getgenv().AUTO_ATTACK_ENABLED = true
-        end
-
-        -- 若原本手動攻擊是開啟的，重新連線
-        if not Settings.AutoClick then
-            startManualAttack()
-        end
-
-        WindUI:Notify({
-            Title = "自動攻擊",
-            Content = "已成功刷新整個攻擊核心",
-            Duration = 3
-        })
-    end
-})
+    })
     Tabs.PVP:Slider({ Title = "攻擊距離", Desc = "調整攻擊距離",
         Value = { Min = 0, Max = 3000, Default = 50 },
         Callback = function(value) Settings.Distance = value end
     })
-
--- 開關：水果快速 M1
-Tabs.PVP:Toggle({
-    Title = "Fruit M1",
-    Desc = "Only M1 Fruit",
-    Value = _G.Config.FastAttack.FruitsM1 or false,
-    Callback = function(state)
-        _G.Config.FastAttack.FruitsM1 = state
-        print("水果快速 M1:", state and "已開啟" or "已關閉")
-    end
-})
-
--- 下拉選單：選擇要使用的惡魔果實
-Tabs.PVP:Dropdown({
-    Title = "select Fruit",
-    Multi = false,
-    Values = { 
-        "Kitsune", 
-        "Control", 
-        "Dragon", 
-        "Gas", 
-        "Pain", 
-        "Blade", 
-        "T-Rex", 
-        "Yeti", 
-        "Tiger" 
-    },
-    Default = _G.Config.FastAttack.SelectFruits or "Kitsune",
-    Callback = function(option)
-        _G.Config.FastAttack.SelectFruits = option
-        print("已選擇Fruit:", option)
-    end
-})
-
--- 可選：調整延遲（如果你想讓用戶自己調整速度）
-Tabs.PVP:Slider({
-    Title = "Fruit M1 延遲",
-    Step = 0.01, 
-    Value = { Min = 0.01, Max = 1, Default = _G.Config.FastAttack.FruitsM1Delay or 0.01 },
-    Callback = function(value)
-        _G.Config.FastAttack.FruitsM1Delay = value
-    end
-})
+    Tabs.PVP:Toggle({
+        Title = "Fruit M1", Desc = "Only M1 Fruit",
+        Value = _G.Config.FastAttack.FruitsM1 or false,
+        Callback = function(state) _G.Config.FastAttack.FruitsM1 = state end
+    })
+    Tabs.PVP:Dropdown({
+        Title = "select Fruit", Multi = false,
+        Values = { "Kitsune", "Control", "Dragon", "Gas", "Pain", "Blade", "T-Rex", "Yeti", "Tiger" },
+        Default = _G.Config.FastAttack.SelectFruits or "Kitsune",
+        Callback = function(option) _G.Config.FastAttack.SelectFruits = option end
+    })
+    Tabs.PVP:Slider({
+        Title = "Fruit M1 延遲", Step = 0.01,
+        Value = { Min = 0.01, Max = 1, Default = _G.Config.FastAttack.FruitsM1Delay or 0.01 },
+        Callback = function(value) _G.Config.FastAttack.FruitsM1Delay = value end
+    })
 
     local function GetPlayerList()
         local list = {}
@@ -1864,7 +1622,6 @@ Tabs.PVP:Slider({
             end
         end
     })
-
     Tabs.PVP:Toggle({ Title = "Fly to Player", Desc = "飛向選定玩家", Value = false,
         Callback = function(state)
             if state then
@@ -1903,7 +1660,7 @@ Tabs.PVP:Slider({
         Callback = function(state) VoidState.Enabled = state end
     })
 
-    -- Farm
+    -- Farm Tab
     Tabs.Farm:Section({ Title = "Farm Setting" })
     Tabs.Farm:Dropdown({ Title = "選擇配置", Multi = false,
         Values = { "Melee", "Blox Fruit", "Sword", "Gun" }, Default = "Melee",
@@ -1966,7 +1723,7 @@ Tabs.PVP:Slider({
         Callback = function(value) BoatSpeedSettings.Speed = value; updateBoatSpeed() end
     })
 
-    -- Auto
+    -- Auto Tab
     Tabs.Auto:Section({ Title = "自動" })
     Tabs.Auto:Toggle({ Title = "自動武裝色", Desc = "自動開啟或關閉武裝色", Value = true,
         Callback = function(state) AutoBuso = state; if state then tryBuso() end end
@@ -1991,38 +1748,23 @@ Tabs.PVP:Slider({
         end
     })
 
-    -- Settings
+    -- Settings Tab
     Tabs.Settings:Section({ Title = "設定" })
-Tabs.Settings:Keybind({ 
-    Title = "快捷鍵", 
-    Desc = "可更改", 
-    Value = CurrentKey,
-    Callback = function(v)
-        CurrentKey = v
-        
-        if not KeyDisabled then
-            Window:SetToggleKey(Enum.KeyCode[v])
+    Tabs.Settings:Keybind({
+        Title = "快捷鍵", Desc = "可更改", Value = CurrentKey,
+        Callback = function(v)
+            CurrentKey = v
+            if not KeyDisabled then Window:SetToggleKey(Enum.KeyCode[v]) end
         end
-    end
-})
-
--- 停用快捷鍵開關
-Tabs.Settings:Toggle({
-    Title = "停用快捷鍵",
-    Desc = "開啟後將禁用快捷鍵",
-    Value = false,
-    Callback = function(state)
-        KeyDisabled = state
-        
-        if state then
-            -- 停用快捷鍵
-            Window:SetToggleKey(nil)
-        else
-            -- 恢復快捷鍵
-            Window:SetToggleKey(Enum.KeyCode[CurrentKey])
+    })
+    Tabs.Settings:Toggle({
+        Title = "停用快捷鍵", Desc = "開啟後將禁用快捷鍵", Value = false,
+        Callback = function(state)
+            KeyDisabled = state
+            if state then Window:SetToggleKey(nil)
+            else Window:SetToggleKey(Enum.KeyCode[CurrentKey]) end
         end
-    end
-})
+    })
     Tabs.Settings:Section({ Title = "提高FPS" })
     Tabs.Settings:Button({ Title = "低配模式", Desc = "按一次啟用低配模式",
         Callback = function() ApplyLowGraphics(true) end
@@ -2048,52 +1790,34 @@ Tabs.Settings:Toggle({
         Value = { Min = 0, Max = JumpSettings.MaxJumpPower, Default = JumpSettings.JumpPower },
         Callback = function(value) JumpSettings.JumpPower = value; updateJumpPower() end
     })
-Tabs.Settings:Toggle({
-    Title = "衝刺開關",
-    Desc = "開啟或關閉衝刺功能",
-    Value = _G.Config.Dash.Enabled,
-    Callback = function(state)
-        _G.Config.Dash.Enabled = state
-        UpdateDash()
-    end
-})
-
-Tabs.Settings:Slider({
-    Title = "衝刺距離",
-    Desc = "距離調整(0~1000)",
-    Value = {
-        Min = 0,
-        Max = 1000,
-        Default = _G.Config.Dash.DashDistance,
-        Rounding = 1   -- 整數（可依需求改成 0.1 等）
-    },
-    Callback = function(value)
-        _G.Config.Dash.DashDistance = value
-        if _G.Config.Dash.Enabled then
-            UpdateDash()
+    Tabs.Settings:Toggle({
+        Title = "衝刺開關", Desc = "開啟或關閉衝刺功能",
+        Value = _G.Config.Dash.Enabled,
+        Callback = function(state) _G.Config.Dash.Enabled = state; UpdateDash() end
+    })
+    Tabs.Settings:Slider({
+        Title = "衝刺距離", Desc = "距離調整(0~1000)",
+        Value = { Min = 0, Max = 1000, Default = _G.Config.Dash.DashDistance, Rounding = 1 },
+        Callback = function(value)
+            _G.Config.Dash.DashDistance = value
+            if _G.Config.Dash.Enabled then UpdateDash() end
         end
-    end
-})
-
-Tabs.Settings:Toggle({
-    Title = "無限跳躍",
-    Desc = "按住跳躍鍵",
-    Value = false, -- 預設關閉
-    Callback = function(state)
-        if state then
-            -- 開啟邏輯
-            flyjumpConnection = UserInputService.JumpRequest:Connect(function()
-                local humanoid = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-                if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end
-            end)
-        else
-            -- 關閉邏輯
-            if flyjumpConnection then flyjumpConnection:Disconnect() end
+    })
+    Tabs.Settings:Toggle({
+        Title = "無限跳躍", Desc = "按住跳躍鍵", Value = false,
+        Callback = function(state)
+            if state then
+                flyjumpConnection = UserInputService.JumpRequest:Connect(function()
+                    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                    if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+                end)
+            else
+                if flyjumpConnection then flyjumpConnection:Disconnect(); flyjumpConnection = nil end
+            end
         end
-    end
-})
+    })
 
-    -- Teleport
+    -- Teleport Tab
     Tabs.Teleport:Section({ Title = "停止飛行" })
     Tabs.Teleport:Button({ Title = "停用飛行", Desc = "立即停止飛行",
         Callback = function()
@@ -2117,7 +1841,7 @@ Tabs.Settings:Toggle({
         })
     end
 
-    -- Fun
+    -- Fun Tab
     Tabs.Fun:Section({ Title = "娛樂(視覺型)" })
     Tabs.Fun:Button({ Title = "身體放大", Desc = "按一次觸發角色放大",
         Callback = function()
@@ -2138,8 +1862,7 @@ Tabs.Settings:Toggle({
                 local head = char.Head
                 ThrowFlashbangRealistic(
                     head.Position + (head.CFrame.LookVector * 2),
-                    head.CFrame.LookVector,
-                    60, 25
+                    head.CFrame.LookVector, 60, 25
                 )
             end
         end
@@ -2148,7 +1871,7 @@ Tabs.Settings:Toggle({
         Callback = function() JerkOff(LocalPlayer) end
     })
 
-    -- Other
+    -- Other Tab
     Tabs.Other:Section({ Title = "其他" })
     Tabs.Other:Button({ Title = "FLY GUI",
         Callback = function()
@@ -2166,37 +1889,31 @@ Tabs.Settings:Toggle({
             ))()
         end
     })
-local executorName = (identifyexecutor and identifyexecutor()) or "Unknown"
-local isXeno = string.find(executorName, "Xeno") ~= nil
 
-if isXeno then
-    Tabs.Other:Button({
-        Title = "aimbot",
-        Locked = true,
-        LockedTitle = "目前不支援 Xeno 執行器",
-    })
-else
-    Tabs.Other:Button({
-        Title = "aimbot",
-        Callback = function()
-            WindUI:Notify({ Title = "aimbot", Content = "正在啟動腳本...", Duration = 3 })
-            loadstring(game:HttpGet(
-                "https://raw.githubusercontent.com/xuez1025/GUI/refs/heads/main/Xu-aimbot"
-            ))()
-        end
-    })
+    local executorName = (identifyexecutor and identifyexecutor()) or "Unknown"
+    local isXeno = string.find(executorName, "Xeno") ~= nil
+    if isXeno then
+        Tabs.Other:Button({ Title = "aimbot", Locked = true, LockedTitle = "目前不支援 Xeno 執行器" })
+    else
+        Tabs.Other:Button({
+            Title = "aimbot",
+            Callback = function()
+                WindUI:Notify({ Title = "aimbot", Content = "正在啟動腳本...", Duration = 3 })
+                loadstring(game:HttpGet(
+                    "https://raw.githubusercontent.com/xuez1025/GUI/refs/heads/main/Xu-aimbot"
+                ))()
+            end
+        })
+    end
 end
-
-end
-
 
 WindUI:Popup({
     Title   = "Xu-Hub",
     Icon    = "shield-check",
     Content = "歡迎使用 Xu-hub 點擊下方執行以啟動介面",
     Buttons = {
-        { Title = "取消", Callback = function() end,       Variant = "Tertiary" },
+        { Title = "取消", Callback = function() end,        Variant = "Tertiary" },
         { Title = "執行", Icon = "play",
-          Callback = function() InitMainHub() end,         Variant = "Primary"  },
+          Callback = function() InitMainHub() end,          Variant = "Primary"  },
     }
 })
