@@ -1,224 +1,305 @@
--- ================== Services ==================
+-- ================== 服務 ==================
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 local VirtualInput = game:GetService("VirtualInputManager")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local player = Players.LocalPlayer
 
--- ================== 狀態 ==================
-local antiKnockbackEnabled = true
-local autoBuyEnabled = false
-local heartbeatConnection
-local autoBuyLoopRunning = false
-local canBuy = false
-local HOLD_DURATION = 0.03  -- 很短，因為 prompt 已設 HoldDuration=0
+-- ================== 設置與變量 ==================
+local isMinimized = false
+local originalSize = UDim2.fromOffset(300, 220) -- 稍微加高一點容納 AFK Label
+local minimizedSize = UDim2.fromOffset(300, 40)
 
--- ================== 防擊退（恢復原本簡單版） ==================
-local function enableAntiKnockback(character)
-    local root = character:WaitForChild("HumanoidRootPart")
-    if heartbeatConnection then
-        heartbeatConnection:Disconnect()
-    end
-    heartbeatConnection = RunService.Heartbeat:Connect(function()
-        if antiKnockbackEnabled and root.Parent then
-            root.AssemblyLinearVelocity = Vector3.zero
-            root.AssemblyAngularVelocity = Vector3.zero
-        end
+local originalPos = UDim2.new(0.5, -150, 1, -280)
+local minimizedPos = originalPos
+
+local antiKnockbackEnabled = false
+local autoBuyEnabled = false
+local antiAFKEnabled = false
+local canBuy = false 
+
+local lastInputTime = os.time()
+local afkTimeValue = 0
+
+-- 顏色配置
+local COLOR_OFF = Color3.fromRGB(180, 50, 50)
+local COLOR_ON = Color3.fromRGB(50, 180, 50)
+local COLOR_WAIT = Color3.fromRGB(180, 150, 50) 
+local COLOR_BG = Color3.fromRGB(30, 30, 30)
+local COLOR_TITLE = Color3.fromRGB(45, 45, 50)
+
+-- ================== 工具函式 ==================
+local function formatTime(seconds)
+    local h = math.floor(seconds / 3600)
+    local m = math.floor((seconds % 3600) / 60)
+    local s = math.floor(seconds % 60)
+    return string.format("%02dh %02dm %02ds", h, m, s)
+end
+
+-- ================== 通知系統 ==================
+local notificationGui = Instance.new("ScreenGui")
+notificationGui.Name = "NotifGui"
+notificationGui.Parent = player:WaitForChild("PlayerGui")
+
+local notifContainer = Instance.new("Frame")
+notifContainer.Size = UDim2.new(0, 250, 0, 500)
+notifContainer.Position = UDim2.new(1, -260, 1, -600)
+notifContainer.BackgroundTransparency = 1
+notifContainer.Parent = notificationGui
+
+local notifLayout = Instance.new("UIListLayout")
+notifLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+notifLayout.Padding = UDim.new(0, 10)
+notifLayout.Parent = notifContainer
+
+local function ShowNotice(msg)
+    local note = Instance.new("TextLabel")
+    note.Size = UDim2.new(1, 0, 0, 40)
+    note.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    note.BackgroundTransparency = 0.2
+    note.TextColor3 = Color3.new(1, 1, 1)
+    note.Text = "  " .. msg
+    note.Font = Enum.Font.GothamSemibold
+    note.TextSize = 13
+    note.TextXAlignment = Enum.TextXAlignment.Left
+    note.Parent = notifContainer
+    Instance.new("UICorner", note).CornerRadius = UDim.new(0, 6)
+    
+    note.Position = UDim2.new(1.5, 0, 0, 0)
+    TweenService:Create(note, TweenInfo.new(0.4, Enum.EasingStyle.Back), {Position = UDim2.new(0, 0, 0, 0)}):Play()
+    
+    task.delay(5, function()
+        local t = TweenService:Create(note, TweenInfo.new(0.5), {TextTransparency = 1, BackgroundTransparency = 1})
+        t:Play()
+        t.Completed:Connect(function() note:Destroy() end)
     end)
 end
 
-local function disableAntiKnockback()
-    if heartbeatConnection then
-        heartbeatConnection:Disconnect()
-        heartbeatConnection = nil
-    end
-end
-
--- ================== 瞬間購買（只改 HoldDuration，不改距離） ==================
+-- ================== Auto Buy 核心邏輯 ==================
 local function makePromptsInstant()
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("ProximityPrompt") then
-            obj.HoldDuration = 0
-            -- 不加這行：obj.MaxActivationDistance = ... （避免距離變遠）
-            -- 可選：obj.RequiresLineOfSight = false  （如果你想要關閉視線要求，可加；預設不加，保持原樣）
-        end
+        if obj:IsA("ProximityPrompt") then obj.HoldDuration = 0 end
     end
 end
-
--- 監聽新生成的 prompt
 workspace.DescendantAdded:Connect(function(desc)
-    if desc:IsA("ProximityPrompt") then
-        desc.HoldDuration = 0
-        -- 同上，不改距離
-    end
+    if desc:IsA("ProximityPrompt") then desc.HoldDuration = 0 end
 end)
-
--- 初始執行
 makePromptsInstant()
 
--- ================== Auto Buy ==================
 local function holdE()
     VirtualInput:SendKeyEvent(true, "E", false, game)
-    task.wait(HOLD_DURATION)
+    task.wait(0.03)
     VirtualInput:SendKeyEvent(false, "E", false, game)
 end
 
-local function autoBuyLoop()
-    if autoBuyLoopRunning then return end
-    autoBuyLoopRunning = true
-    
-    while autoBuyEnabled do
-        if canBuy then
+task.spawn(function()
+    while true do
+        if autoBuyEnabled and canBuy then
             holdE()
-            task.wait(0.1)  -- 恢復較安全的間隔，避免 spam 太明顯
+            task.wait(0.1)
         else
             task.wait(0.1)
         end
     end
-    
-    autoBuyLoopRunning = false
-end
+end)
 
--- ================== GUI ==================
+ProximityPromptService.PromptShown:Connect(function(_, inputType)
+    if inputType == Enum.ProximityPromptInputType.Keyboard then canBuy = true end
+end)
+ProximityPromptService.PromptHidden:Connect(function(_, inputType)
+    if inputType == Enum.ProximityPromptInputType.Keyboard then canBuy = false end
+end)
+
+-- ================== AFK 邏輯 ==================
+UserInputService.InputBegan:Connect(function() lastInputTime = os.time() end)
+player.Idled:Connect(function()
+    if antiAFKEnabled then
+        local VirtualUser = game:GetService("VirtualUser")
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+    end
+end)
+
+-- ================== GUI 核心框架 ==================
 local gui = Instance.new("ScreenGui")
-gui.Name = "AntiSystemGui"
+gui.Name = "PureUtilityGui_V3"
 gui.ResetOnSpawn = false
 gui.Parent = player:WaitForChild("PlayerGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.fromOffset(260, 200)
-frame.Position = UDim2.fromScale(0.5, 0.7) - UDim2.fromOffset(130, 100)
-frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.Name = "MainFrame"
+frame.Size = originalSize
+frame.Position = originalPos
+frame.BackgroundColor3 = COLOR_BG
 frame.BorderSizePixel = 0
+frame.ClipsDescendants = true 
 frame.Parent = gui
-frame.Active = true
-frame.Draggable = true
+Instance.new("UICorner", frame)
 
--- 關閉按鈕
-local closeButton = Instance.new("TextButton")
-closeButton.Size = UDim2.fromOffset(30, 30)
-closeButton.Position = UDim2.new(1, -35, 0, 5)
-closeButton.Text = "X"
-closeButton.TextScaled = true
-closeButton.BackgroundColor3 = Color3.fromRGB(140, 40, 40)
-closeButton.TextColor3 = Color3.new(1,1,1)
-closeButton.Parent = frame
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 40)
+titleBar.BackgroundColor3 = COLOR_TITLE
+titleBar.Parent = frame
+Instance.new("UICorner", titleBar)
 
--- Anti 按鈕
-local antiButton = Instance.new("TextButton")
-antiButton.Size = UDim2.fromOffset(240, 45)
-antiButton.Position = UDim2.fromOffset(10, 50)
-antiButton.TextScaled = true
-antiButton.Parent = frame
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -80, 1, 0)
+titleLabel.Position = UDim2.fromOffset(15, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "Brainrot Mutations Farm"
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextColor3 = Color3.new(1, 1, 1)
+titleLabel.TextSize = 14
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Parent = titleBar
 
-local function updateAntiButton()
+local miniBtn = Instance.new("TextButton")
+miniBtn.Size = UDim2.fromOffset(28, 28)
+miniBtn.Position = UDim2.new(1, -65, 0, 6)
+miniBtn.Text = "-"
+miniBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
+miniBtn.TextColor3 = Color3.new(1,1,1)
+miniBtn.Parent = titleBar
+Instance.new("UICorner", miniBtn)
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.fromOffset(28, 28)
+closeBtn.Position = UDim2.new(1, -34, 0, 6)
+closeBtn.Text = "×"
+closeBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+closeBtn.TextColor3 = Color3.new(1,1,1)
+closeBtn.Parent = titleBar
+Instance.new("UICorner", closeBtn)
+
+local container = Instance.new("ScrollingFrame")
+container.Size = UDim2.new(1, -20, 1, -50)
+container.Position = UDim2.new(0, 10, 0, 50)
+container.BackgroundTransparency = 1
+container.ScrollBarThickness = 2
+container.Parent = frame
+
+local gridLayout = Instance.new("UIGridLayout")
+gridLayout.CellSize = UDim2.new(0.48, 0, 0, 45)
+gridLayout.CellPadding = UDim2.new(0.03, 0, 0, 10)
+gridLayout.Parent = container
+
+-- ================== 按鈕與邏輯整合系統 ==================
+local buttons = {}
+
+local function AddToggle(name, id, callback)
+    local state = false
+    local btn = Instance.new("TextButton")
+    btn.Text = name
+    btn.BackgroundColor3 = COLOR_OFF
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextSize = 14
+    btn.Parent = container
+    Instance.new("UICorner", btn)
+
+    local function updateVisuals()
+        local targetColor = state and COLOR_ON or COLOR_OFF
+        if id == "AutoBuy" and state and not canBuy then
+            targetColor = COLOR_WAIT
+        end
+        TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = targetColor}):Play()
+    end
+
+    local function toggle()
+        state = not state
+        callback(state)
+        updateVisuals()
+        ShowNotice(name .. (state and " 已啟動" or " 已停用"))
+    end
+
+    btn.MouseButton1Click:Connect(toggle)
+    
+    buttons[id] = {
+        btn = btn, 
+        update = updateVisuals, 
+        toggle = toggle
+    }
+end
+
+AddToggle("Anti Attack (Q)", "AntiAttack", function(state) antiKnockbackEnabled = state end)
+AddToggle("Auto Buy (R)", "AutoBuy", function(state) autoBuyEnabled = state end)
+AddToggle("Anti AFK", "AntiAFK", function(state) antiAFKEnabled = state end)
+
+local afkLabel = Instance.new("TextLabel")
+afkLabel.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+afkLabel.TextColor3 = Color3.new(1, 1, 1)
+afkLabel.Font = Enum.Font.GothamBold
+afkLabel.TextSize = 11 -- 稍微調小字體以容納完整時間
+afkLabel.Text = "Idle: 00h 00m 00s"
+afkLabel.Parent = container
+Instance.new("UICorner", afkLabel)
+
+-- ================== 核心 Loop ==================
+RunService.Heartbeat:Connect(function()
     if antiKnockbackEnabled then
-        antiButton.Text = "Anti Attack : ON (Q)"
-        antiButton.BackgroundColor3 = Color3.fromRGB(40,120,40)
-    else
-        antiButton.Text = "Anti Attack : OFF (Q)"
-        antiButton.BackgroundColor3 = Color3.fromRGB(120,40,40)
-    end
-end
-
-local function toggleAntiKnockback()
-    antiKnockbackEnabled = not antiKnockbackEnabled
-    if antiKnockbackEnabled and player.Character then
-        enableAntiKnockback(player.Character)
-    else
-        disableAntiKnockback()
-    end
-    updateAntiButton()
-end
-
-antiButton.MouseButton1Click:Connect(toggleAntiKnockback)
-updateAntiButton()
-
--- Auto Buy 按鈕
-local autoButton = Instance.new("TextButton")
-autoButton.Size = UDim2.fromOffset(240, 45)
-autoButton.Position = UDim2.fromOffset(10, 110)
-autoButton.TextScaled = true
-autoButton.Parent = frame
-
-local function updateAutoButton()
-    if not autoBuyEnabled then
-        autoButton.Text = "Auto Buy : OFF (R)"
-        autoButton.BackgroundColor3 = Color3.fromRGB(120,40,40)
-    else
-        if canBuy then
-            autoButton.Text = "Auto Buy : ON (Buying...) (R)"
-            autoButton.BackgroundColor3 = Color3.fromRGB(40,120,40)
-        else
-            autoButton.Text = "Auto Buy : ON (Waiting E...) (R)"
-            autoButton.BackgroundColor3 = Color3.fromRGB(120,120,40)
+        local char = player.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            char.HumanoidRootPart.AssemblyLinearVelocity = Vector3.zero
         end
     end
-end
 
-local function toggleAutoBuy()
-    autoBuyEnabled = not autoBuyEnabled
-    if autoBuyEnabled then
-        task.spawn(autoBuyLoop)
-    end
-    updateAutoButton()
-end
-
-autoButton.MouseButton1Click:Connect(toggleAutoBuy)
-updateAutoButton()
-
--- ================== 偵測 E ==================
-ProximityPromptService.PromptShown:Connect(function(prompt, inputType)
-    if inputType == Enum.ProximityPromptInputType.Keyboard then
-        canBuy = true
-        if prompt then prompt.HoldDuration = 0 end  -- 確保當前 prompt 也瞬間
-        updateAutoButton()
+    local currentTime = os.time()
+    afkTimeValue = currentTime - lastInputTime
+    afkLabel.Text = "Idle: " .. formatTime(afkTimeValue)
+    afkLabel.BackgroundTransparency = (afkTimeValue > 0) and 0 or 0.5
+    
+    if buttons["AutoBuy"] then
+        buttons["AutoBuy"].update()
     end
 end)
 
-ProximityPromptService.PromptHidden:Connect(function(prompt, inputType)
-    if inputType == Enum.ProximityPromptInputType.Keyboard then
-        canBuy = false
-        updateAutoButton()
-    end
-end)
-
--- ================== 關閉 / 重置 ==================
-local function resetAll()
-    antiKnockbackEnabled = false
-    autoBuyEnabled = false
-    canBuy = false
-    disableAntiKnockback()
-    gui.Enabled = false
-    updateAntiButton()
-    updateAutoButton()
-end
-
-closeButton.MouseButton1Click:Connect(resetAll)
-
--- ================== 快捷鍵 ==================
+-- ================== 快捷鍵監聽 ==================
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
-    if not gui.Enabled then return end
-    if input.KeyCode == Enum.KeyCode.Q then
-        toggleAntiKnockback()
-    elseif input.KeyCode == Enum.KeyCode.R then
-        toggleAutoBuy()
+    if input.KeyCode == Enum.KeyCode.R then
+        if buttons["AutoBuy"] then buttons["AutoBuy"].toggle() end
+    elseif input.KeyCode == Enum.KeyCode.Q then
+        if buttons["AntiAttack"] then buttons["AntiAttack"].toggle() end
     end
 end)
 
--- ================== 重生處理 ==================
-player.CharacterAdded:Connect(function(character)
-    if antiKnockbackEnabled then
-        enableAntiKnockback(character)
-    end
-    task.wait(1)  -- 等一下再掃 prompt
-    makePromptsInstant()
+-- ================== 其他 UI 操作 ==================
+miniBtn.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    local targetSize = isMinimized and minimizedSize or originalSize
+    local targetPos = isMinimized and minimizedPos or originalPos
+    
+    miniBtn.Text = isMinimized and "+" or "-"
+    container.Visible = not isMinimized
+    
+    TweenService:Create(frame, TweenInfo.new(0.3), {
+        Size = targetSize,
+        Position = targetPos
+    }):Play()
 end)
 
-if player.Character and antiKnockbackEnabled then
-    enableAntiKnockback(player.Character)
-end
+closeBtn.MouseButton1Click:Connect(function()
+    gui:Destroy()
+    notificationGui:Destroy()
+end)
 
-gui.Enabled = true
+-- 拖拽功能
+local dragging, dragStart, startPos
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+end)
