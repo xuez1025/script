@@ -1,0 +1,649 @@
+-- WindUI 載入
+local WindUI = loadstring(game:HttpGet(
+    "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
+))()
+
+local CurrentKey = "G"
+local KeyDisabled = false
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+local ESP_ENABLED = false
+local ESP_COLOR   = Color3.fromRGB(30, 30, 30)
+local TEXT_COLOR  = Color3.fromRGB(255, 255, 255)
+
+local function createESP(p)
+    if p == LocalPlayer or not p.Character then return end
+    if p.Character:FindFirstChild("ESP_Highlight") then return end
+
+    local h = Instance.new("Highlight")
+    h.Name                = "ESP_Highlight"
+    h.FillColor           = ESP_COLOR
+    h.OutlineColor        = Color3.fromRGB(255, 255, 255)
+    h.FillTransparency    = 0.2
+    h.OutlineTransparency = 0
+    h.Adornee             = p.Character
+    h.Parent              = p.Character
+
+    local head = p.Character:FindFirstChild("Head")
+    if not head then return end
+
+    local bill = Instance.new("BillboardGui")
+    bill.Name        = "ESP_Billboard"
+    bill.Size        = UDim2.fromOffset(140, 48)
+    bill.StudsOffset = Vector3.new(0, 2.6, 0)
+    bill.AlwaysOnTop = true
+    bill.Parent      = head
+
+    local text = Instance.new("TextLabel", bill)
+    text.Name                   = "Info"
+    text.BackgroundTransparency = 1
+    text.TextColor3             = TEXT_COLOR
+    text.TextStrokeTransparency = 0
+    text.Font                   = Enum.Font.SourceSansBold
+    text.TextYAlignment         = Enum.TextYAlignment.Top
+    text.Text                   = p.Name
+    text.Size                   = UDim2.new(1, -8, 0.65, 0)
+    text.Position               = UDim2.new(0, 4, 0, 2)
+    text.TextScaled             = true
+    text.TextWrapped            = true
+    text.TextSize               = 18
+    text.TextXAlignment         = Enum.TextXAlignment.Center
+
+    local barBG = Instance.new("Frame", bill)
+    barBG.Name             = "HP_Background"
+    barBG.Size             = UDim2.new(0.9, 0, 0.12, 0)
+    barBG.Position         = UDim2.new(0.05, 0, 0.78, 0)
+    barBG.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    barBG.BorderSizePixel  = 0
+
+    local barFG = Instance.new("Frame", barBG)
+    barFG.Name             = "HP_Fill"
+    barFG.Size             = UDim2.new(1, 0, 1, 0)
+    barFG.Position         = UDim2.new(0, 0, 0, 0)
+    barFG.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+    barFG.BorderSizePixel  = 0
+end
+
+local function removeESP(p)
+    if p == LocalPlayer or not p.Character then return end
+    local h = p.Character:FindFirstChild("ESP_Highlight")
+    if h then h:Destroy() end
+    local head = p.Character:FindFirstChild("Head")
+    if head then
+        local bill = head:FindFirstChild("ESP_Billboard")
+        if bill then bill:Destroy() end
+    end
+end
+
+-- 每幀更新名稱、血量、距離
+local function updateESP()
+    if not ESP_ENABLED or not LocalPlayer.Character then return end
+    local myHRP = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local hum  = p.Character:FindFirstChildOfClass("Humanoid")
+            local pHRP = p.Character:FindFirstChild("HumanoidRootPart")
+            local head = p.Character:FindFirstChild("Head")
+            if hum and pHRP and head then
+                local bill = head:FindFirstChild("ESP_Billboard")
+                if bill then
+                    local info  = bill:FindFirstChild("Info")
+                    local barFG = bill:FindFirstChild("HP_Background")
+                                  and bill.HP_Background:FindFirstChild("HP_Fill")
+                    if info then
+                        local dist = math.floor((myHRP.Position - pHRP.Position).Magnitude)
+                        info.Text  = string.format("%s\nHP: %d | %dm", p.Name, math.floor(hum.Health), dist)
+                    end
+                    if barFG then
+                        local ratio = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+                        barFG.BackgroundColor3 = ratio > 0.6 and Color3.fromRGB(0, 255, 0)
+                                              or ratio > 0.3 and Color3.fromRGB(255, 255, 0)
+                                              or Color3.fromRGB(255, 0, 0)
+                        barFG.Size = UDim2.new(ratio, 0, 1, 0)
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- 新玩家加入時自動掛 ESP
+local function setupPlayerESP(p)
+    if p == LocalPlayer then return end
+    p.CharacterAdded:Connect(function()
+        task.wait(0.2)
+        if ESP_ENABLED then createESP(p) end
+    end)
+    if ESP_ENABLED and p.Character then createESP(p) end
+end
+
+-- 初始化：對現有玩家掛鉤，並監聽新加入 / 離開
+for _, p in ipairs(Players:GetPlayers()) do setupPlayerESP(p) end
+Players.PlayerAdded:Connect(setupPlayerESP)
+Players.PlayerRemoving:Connect(removeESP)
+
+-- 每幀更新
+RunService.RenderStepped:Connect(function()
+    updateESP()
+end)
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local TargetPlayer = nil
+local CamlockEnabled = false
+local viewing = nil
+local viewDied, viewChanged = nil, nil
+local isSpectating = false
+local TPConnection = nil
+
+local FTP = { Enabled = false, Speed = 350, Conn = nil, NoclipConn = nil }
+
+local function setPlatformStand(state)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then hum.PlatformStand = state end
+end
+
+local function resetCharPhysics()
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = true
+            part.Velocity = Vector3.zero
+        end
+    end
+end
+
+local function FTP_Enable()
+    if FTP.Enabled then return end
+    FTP.Enabled = true
+    setPlatformStand(true)
+    FTP.Conn = RunService.RenderStepped:Connect(function()
+        if not FTP.Enabled then return end
+        if not TargetPlayer or not TargetPlayer.Character then return end
+        local char = LocalPlayer.Character
+        local pHRP = char and char:FindFirstChild("HumanoidRootPart")
+        local targetHRP = TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not pHRP or not targetHRP then return end
+        local dir = targetHRP.Position - pHRP.Position
+        if dir.Magnitude > 0 then pHRP.Velocity = dir.Unit * FTP.Speed end
+    end)
+    FTP.NoclipConn = RunService.Stepped:Connect(function()
+        if not FTP.Enabled then return end
+        local char = LocalPlayer.Character
+        if not char then return end
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then part.CanCollide = false end
+        end
+    end)
+end
+
+local function FTP_Disable()
+    FTP.Enabled = false
+    if FTP.Conn then FTP.Conn:Disconnect(); FTP.Conn = nil end
+    if FTP.NoclipConn then FTP.NoclipConn:Disconnect(); FTP.NoclipConn = nil end
+    setPlatformStand(false)
+    resetCharPhysics()
+end
+
+local function StopSpectate()
+    if viewDied then viewDied:Disconnect(); viewDied = nil end
+    if viewChanged then viewChanged:Disconnect(); viewChanged = nil end
+    Camera.CameraSubject = LocalPlayer.Character
+    viewing = nil
+end
+
+local function SpectatePlayer(plr)
+    StopSpectate()
+    if not plr or not plr.Character then return end
+    viewing = plr
+    Camera.CameraSubject = viewing.Character
+    viewDied = plr.CharacterAdded:Connect(function()
+        repeat task.wait() until plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+        Camera.CameraSubject = plr.Character
+    end)
+    viewChanged = Camera:GetPropertyChangedSignal("CameraSubject"):Connect(function()
+        if viewing and viewing.Character then
+            Camera.CameraSubject = viewing.Character
+        end
+    end)
+end
+
+-- 視角鎖定更新（放在 RenderStepped）
+RunService.RenderStepped:Connect(function()
+    if CamlockEnabled and TargetPlayer and TargetPlayer.Character then
+        local tHRP = TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if tHRP then
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, tHRP.Position)
+        end
+    end
+end)
+
+local function GetPlayerList()
+    local list = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then table.insert(list, plr.Name) end
+    end
+    return list
+end
+
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LocalPlayer = Players.LocalPlayer
+local PlaceId = game.PlaceId
+local JobId = game.JobId
+
+local ServerBrowserRemote = ReplicatedStorage:WaitForChild("__ServerBrowser")
+
+local ServerCore = {}
+
+function ServerCore:TeleportToServer(jobId)
+    if not jobId or jobId == "" then return end
+    task.spawn(function()
+        if ServerBrowserRemote then
+            local success = pcall(function()
+                ServerBrowserRemote:InvokeServer("teleport", jobId)
+            end)
+            if success then return end
+        end
+        pcall(function()
+            TeleportService:TeleportToPlaceInstance(PlaceId, jobId, LocalPlayer)
+        end)
+    end)
+end
+
+function ServerCore:FindAndHop(mode)
+    task.spawn(function()
+        local url = "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+        local success, response = pcall(function()
+            return HttpService:JSONDecode(game:HttpGet(url))
+        end)
+        if not (success and response and response.data) then return end
+
+        local validServers = {}
+        for _, server in ipairs(response.data) do
+            if server.id ~= JobId and server.playing < server.maxPlayers then
+                table.insert(validServers, { id = server.id, count = server.playing })
+            end
+        end
+        if #validServers == 0 then return end
+
+        local targetJobId
+        if mode == "small" then
+            table.sort(validServers, function(a, b) return a.count < b.count end)
+            targetJobId = validServers[1].id
+        else
+            targetJobId = validServers[math.random(1, #validServers)].id
+        end
+
+        self:TeleportToServer(targetJobId)
+    end)
+end
+
+-- 依賴服務
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+
+_G.Config = _G.Config or {}
+_G.Config.FastAttack = _G.Config.FastAttack or {
+    FruitsM1 = false,
+    SelectFruits = "Kitsune",
+    FruitsM1Delay = 0.01
+}
+
+-- ==================== 核心功能 (不要動這部分) ====================
+local function GetFruitsRemote()
+    local char = LocalPlayer.Character
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    local tool = nil
+
+    -- 在角色身上找
+    if char then
+        if _G.Config.FastAttack.SelectFruits == "Kitsune" then
+            tool = char:FindFirstChild("Kitsune-Kitsune")
+        elseif _G.Config.FastAttack.SelectFruits == "Control" then
+            tool = char:FindFirstChild("Control-Control")
+        elseif _G.Config.FastAttack.SelectFruits == "Dragon" then
+            tool = char:FindFirstChild("Dragon-Dragon")
+        elseif _G.Config.FastAttack.SelectFruits == "Gas" then
+            tool = char:FindFirstChild("Gas-Gas")
+        elseif _G.Config.FastAttack.SelectFruits == "Pain" then
+            tool = char:FindFirstChild("Pain-Pain")
+        elseif _G.Config.FastAttack.SelectFruits == "Blade" then
+            tool = char:FindFirstChild("Blade-Blade")
+        elseif _G.Config.FastAttack.SelectFruits == "T-Rex" then
+            tool = char:FindFirstChild("T-Rex-T-Rex")
+        elseif _G.Config.FastAttack.SelectFruits == "Yeti" then
+            tool = char:FindFirstChild("Yeti-Yeti")
+        elseif _G.Config.FastAttack.SelectFruits == "Tiger" then
+            tool = char:FindFirstChild("Tiger-Tiger")
+        end
+
+        if tool then
+            return tool:FindFirstChild("LeftClickRemote", true)
+        end
+    end
+
+    -- 在背包裡找
+    if backpack then
+        if _G.Config.FastAttack.SelectFruits == "Kitsune" then
+            tool = backpack:FindFirstChild("Kitsune-Kitsune")
+        elseif _G.Config.FastAttack.SelectFruits == "Control" then
+            tool = backpack:FindFirstChild("Control-Control")
+        elseif _G.Config.FastAttack.SelectFruits == "Dragon" then
+            tool = backpack:FindFirstChild("Dragon-Dragon")
+        elseif _G.Config.FastAttack.SelectFruits == "Gas" then
+            tool = backpack:FindFirstChild("Gas-Gas")
+        elseif _G.Config.FastAttack.SelectFruits == "Pain" then
+            tool = backpack:FindFirstChild("Pain-Pain")
+        elseif _G.Config.FastAttack.SelectFruits == "Blade" then
+            tool = backpack:FindFirstChild("Blade-Blade")
+        elseif _G.Config.FastAttack.SelectFruits == "T-Rex" then
+            tool = backpack:FindFirstChild("T-Rex-T-Rex")
+        elseif _G.Config.FastAttack.SelectFruits == "Yeti" then
+            tool = backpack:FindFirstChild("Yeti-Yeti")
+        elseif _G.Config.FastAttack.SelectFruits == "Tiger" then
+            tool = backpack:FindFirstChild("Tiger-Tiger")
+        end
+
+        if tool then
+            return tool:FindFirstChild("LeftClickRemote", true)
+        end
+    end
+    return nil
+end
+
+-- ==================== Fast Attack Fruits M1 核心循環 ====================
+task.spawn(function()
+    while task.wait(_G.Config.FastAttack.FruitsM1Delay) do
+        if _G.Config.FastAttack.FruitsM1 == true then
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local remote = GetFruitsRemote()
+
+            if char and hrp and remote then
+                local direction = -hrp.CFrame.UpVector
+                remote:FireServer(direction, 2, true)
+            end
+        end
+    end
+end)
+
+-- 直接建立 GUI 視窗
+local Window = WindUI:CreateWindow({
+    Title         = "Xu-hub",
+    Icon          = "user-check",
+    Author        = "by xuez1025",
+    Folder        = "Xu-Hub",
+    Size          = UDim2.fromOffset(600, 400),
+    Transparent   = true,
+    Theme         = "Dark",
+    User = {
+        Enabled   = true,
+        Anonymous = false,
+        Callback  = function()
+            local LocalPlayer = game.Players.LocalPlayer
+            WindUI:Notify({ 
+                Title = LocalPlayer.Name, 
+                Content = "ID: " .. LocalPlayer.UserId, 
+                Duration = 3 
+            })
+        end
+    },
+    Acrylic       = false,
+    HideSearchBar = false,
+    SideBarWidth  = 200,
+    OpenButton = {
+        Title           = "Xu-hub",
+        CornerRadius    = UDim.new(1, 0),
+        StrokeThickness = 3,
+        Enabled         = true,
+        OnlyMobile      = false,
+        Draggable       = true,
+        OnlyIcon        = false,
+        Color           = ColorSequence.new(Color3.fromHex("#7F00FF"), Color3.fromHex("#00C6FF")),
+    }
+})
+
+-- 建立分頁
+local Tabs = {
+    PVP = Window:Tab({ Title = "PVP", Icon = "swords" })
+}
+
+Tabs.PVP:Section({ Title = "Fruit M1 Setting" })
+
+-- 開關：水果快速 M1
+Tabs.PVP:Toggle({
+    Title = "Fruit M1",
+    Desc = "Only M1 Fruit",
+    Value = _G.Config.FastAttack.FruitsM1 or false,
+    Callback = function(state)
+        _G.Config.FastAttack.FruitsM1 = state
+        print("水果快速 M1:", state and "已開啟" or "已關閉")
+    end
+})
+
+-- 下拉選單：選擇要使用的惡魔果實
+Tabs.PVP:Dropdown({
+    Title = "select Fruit",
+    Multi = false,
+    Values = { 
+        "Kitsune", 
+        "Control", 
+        "Dragon", 
+        "Gas", 
+        "Pain", 
+        "Blade", 
+        "T-Rex", 
+        "Yeti", 
+        "Tiger" 
+    },
+    Default = _G.Config.FastAttack.SelectFruits or "Kitsune",
+    Callback = function(option)
+        _G.Config.FastAttack.SelectFruits = option
+        print("已選擇Fruit:", option)
+    end
+})
+
+-- 可選：調整延遲（如果你想讓用戶自己調整速度）
+Tabs.PVP:Slider({
+    Title = "Fruit M1 延遲",
+    Step = 0.01, 
+    Value = { Min = 0.01, Max = 1, Default = _G.Config.FastAttack.FruitsM1Delay or 0.01 },
+    Callback = function(value)
+        _G.Config.FastAttack.FruitsM1Delay = value
+    end
+})
+
+Tabs.PVP:Section({ Title = "Players" })
+
+Tabs.PVP:Toggle({
+    Title = "ESP",
+    Desc = "顯示玩家名稱、血量與距離",
+    Value = false,
+    Callback = function(state)
+        ESP_ENABLED = state
+        for _, p in ipairs(Players:GetPlayers()) do
+            if state then createESP(p) else removeESP(p) end
+        end
+    end
+})
+
+-- 選擇玩家
+local playerDropdown = Tabs.PVP:Dropdown({
+    Title = "選擇玩家",
+    Values = GetPlayerList(),
+    Value = nil,
+    Callback = function(option)
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr.Name == option then
+                TargetPlayer = plr
+                break
+            end
+        end
+        if isSpectating and TargetPlayer then
+            SpectatePlayer(TargetPlayer)
+        end
+    end
+})
+
+Players.PlayerAdded:Connect(function()   playerDropdown:Refresh(GetPlayerList()) end)
+Players.PlayerRemoving:Connect(function() playerDropdown:Refresh(GetPlayerList()) end)
+
+-- 傳送玩家
+Tabs.PVP:Toggle({
+    Title = "傳送玩家",
+    Desc = "開啟或關閉傳送",
+    Value = false,
+    Callback = function(state)
+        if state then
+            TPConnection = RunService.Heartbeat:Connect(function()
+                if TargetPlayer and TargetPlayer.Character
+                   and TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                   and LocalPlayer.Character
+                   and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    LocalPlayer.Character.HumanoidRootPart.CFrame =
+                        TargetPlayer.Character.HumanoidRootPart.CFrame
+                end
+            end)
+        else
+            if TPConnection then TPConnection:Disconnect(); TPConnection = nil end
+        end
+    end
+})
+
+-- Fly to Player
+Tabs.PVP:Toggle({
+    Title = "Fly to Player",
+    Desc = "飛向選定玩家",
+    Value = false,
+    Callback = function(state)
+        if state then
+            if not TargetPlayer then return end
+            FTP_Enable()
+        else
+            FTP_Disable()
+        end
+    end
+})
+
+-- 飛行速度
+Tabs.PVP:Slider({
+    Title = "Fly 速度",
+    Desc = "調整角色的飛行速度",
+    Value = { Min = 50, Max = 2000, Default = FTP.Speed },
+    Callback = function(value) FTP.Speed = value end
+})
+
+-- 視角鎖定
+Tabs.PVP:Toggle({
+    Title = "視角鎖定",
+    Desc = "鎖定目標玩家",
+    Value = false,
+    Callback = function(state) CamlockEnabled = state end
+})
+
+-- 觀察玩家
+Tabs.PVP:Toggle({
+    Title = "觀察玩家",
+    Desc = "開啟或關閉觀戰",
+    Value = false,
+    Callback = function(state)
+        isSpectating = state
+        if state then
+            if TargetPlayer then SpectatePlayer(TargetPlayer) end
+        else
+            StopSpectate()
+        end
+    end
+})
+
+local TargetJobID = ""
+
+    Tabs.PVP:Section({ Title = "手動加入伺服器" })
+    Tabs.PVP:Input({
+        Title = "伺服器 ID",
+        Placeholder = "在此貼上 JobId...",
+        Callback = function(text) TargetJobID = text end
+    })
+
+    Tabs.PVP:Button({
+        Title = "立即加入",
+        Desc = "加入所輸入的伺服器",
+        Callback = function()
+            if TargetJobID ~= "" then
+                ServerCore:TeleportToServer(TargetJobID)
+            end
+        end
+    })
+
+    Tabs.PVP:Section({ Title = "自動加入伺服器" })
+    Tabs.PVP:Button({ 
+        Title = "加入少人伺服器",
+        Desc = "少於5人",
+        Callback = function()
+		WindUI:Notify({ Title = "加入少人伺服器", Content = "正在切換伺服器中..", Duration = 1 })
+		ServerCore:FindAndHop("small") end
+    })
+
+    Tabs.PVP:Button({ 
+        Title = "伺服器跳轉",
+        Desc = "尋找其他伺服器",
+        Callback = function()
+		WindUI:Notify({ Title = "伺服器跳轉", Content = "正在切換伺服器中..", Duration = 1 })
+		ServerCore:FindAndHop("random") end
+    })
+
+    Tabs.PVP:Button({ 
+        Title = "重進當前伺服器",
+        Desc = "重新加入該伺服器",
+        Callback = function()
+		WindUI:Notify({ Title = "重進當前伺服器", Content = "正在重進中..", Duration = 1 })
+		ServerCore:TeleportToServer(JobId) end
+    })
+
+Tabs.PVP:Section({ Title = "設定" })
+
+Tabs.PVP:Keybind({ 
+    Title = "快捷鍵", 
+    Desc = "可更改", 
+    Value = CurrentKey,
+    Callback = function(v)
+        CurrentKey = v
+        
+        if not KeyDisabled then
+            Window:SetToggleKey(Enum.KeyCode[v])
+        end
+    end
+})
+
+-- 停用快捷鍵開關
+Tabs.PVP:Toggle({
+    Title = "停用快捷鍵",
+    Desc = "開啟後將禁用快捷鍵",
+    Value = false,
+    Callback = function(state)
+        KeyDisabled = state
+        
+        if state then
+            -- 停用快捷鍵
+            Window:SetToggleKey(nil)
+        else
+            -- 恢復快捷鍵
+            Window:SetToggleKey(Enum.KeyCode[CurrentKey])
+        end
+    end
+})
