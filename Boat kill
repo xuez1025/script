@@ -1,9 +1,8 @@
--- [[ Blox Fruits 帶船傳送工具 ]] --
+-- [[ Blox Fruits 帶船傳送工具 - 增強版 ]] --
 
 local Player = game:GetService("Players")
 local LocalPlayer = Player.LocalPlayer
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 
 -- 介面設置
 local ScreenGui = Instance.new("ScreenGui")
@@ -16,14 +15,18 @@ local PlayerList = Instance.new("ScrollingFrame")
 local UIListLayout = Instance.new("UIListLayout")
 local ShipTpBtn = Instance.new("TextButton")
 
+-- 新增的傳送按鈕
+local TpBtn1 = Instance.new("TextButton")
+local TpBtn2 = Instance.new("TextButton")
+
 ScreenGui.Name = "BF_ShipTeleport_GUI"
 ScreenGui.Parent = game:GetService("CoreGui")
 
 MainFrame.Name = "MainFrame"
 MainFrame.Parent = ScreenGui
 MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
-MainFrame.Position = UDim2.new(0.5, -125, 0.5, -150)
-MainFrame.Size = UDim2.new(0, 250, 0, 350)
+MainFrame.Position = UDim2.new(0.5, -125, 0.5, -180)
+MainFrame.Size = UDim2.new(0, 250, 0, 420) -- 稍微拉高一點放按鈕
 MainFrame.Active = true
 MainFrame.Draggable = true
 
@@ -31,7 +34,7 @@ TitleBar.Size = UDim2.new(1, 0, 0, 35)
 TitleBar.BackgroundColor3 = Color3.fromRGB(70, 70, 120)
 TitleBar.Parent = MainFrame
 
-Title.Text = "帶船傳送助手"
+Title.Text = "帶船傳送助手 (專業版)"
 Title.TextColor3 = Color3.new(1,1,1)
 Title.Size = UDim2.new(1, -40, 1, 0)
 Title.BackgroundTransparency = 1
@@ -49,30 +52,46 @@ ContentFrame.Size = UDim2.new(1, 0, 1, -35)
 ContentFrame.BackgroundTransparency = 1
 ContentFrame.Parent = MainFrame
 
-PlayerList.Size = UDim2.new(0.9, 0, 0.6, 0)
+-- 調整玩家列表高度
+PlayerList.Size = UDim2.new(0.9, 0, 0.45, 0)
 PlayerList.Position = UDim2.new(0.05, 0, 0.05, 0)
 PlayerList.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
 PlayerList.Parent = ContentFrame
-
 UIListLayout.Parent = PlayerList
 
-ShipTpBtn.Text = "帶船傳送至目標: OFF"
+-- 1. 帶船跟隨開關
+ShipTpBtn.Text = "帶船追蹤目標: OFF"
 ShipTpBtn.TextColor3 = Color3.new(1,1,1)
 ShipTpBtn.BackgroundColor3 = Color3.fromRGB(60, 130, 60)
-ShipTpBtn.Position = UDim2.new(0.1, 0, 0.75, 0)
-ShipTpBtn.Size = UDim2.new(0.8, 0, 0, 45)
+ShipTpBtn.Position = UDim2.new(0.1, 0, 0.55, 0)
+ShipTpBtn.Size = UDim2.new(0.8, 0, 0, 40)
 ShipTpBtn.Parent = ContentFrame
+
+-- 2. 座標按鈕 1
+TpBtn1.Text = "傳送至 (941, 252, 32900)"
+TpBtn1.TextColor3 = Color3.new(1,1,1)
+TpBtn1.BackgroundColor3 = Color3.fromRGB(100, 80, 150)
+TpBtn1.Position = UDim2.new(0.1, 0, 0.7, 0)
+TpBtn1.Size = UDim2.new(0.8, 0, 0, 40)
+TpBtn1.Parent = ContentFrame
+
+-- 3. 座標按鈕 2
+TpBtn2.Text = "傳送至 (2283, 19, 911)"
+TpBtn2.TextColor3 = Color3.new(1,1,1)
+TpBtn2.BackgroundColor3 = Color3.fromRGB(100, 80, 150)
+TpBtn2.Position = UDim2.new(0.1, 0, 0.85, 0)
+TpBtn2.Size = UDim2.new(0.8, 0, 0, 40)
+TpBtn2.Parent = ContentFrame
 
 --- 邏輯實作 ---
 
 local selectedTarget = nil
 local shipTpToggle = false
 
--- 獲取目前駕駛的船隻根部件 (通常是船的主體或 VehicleSeat)
+-- 獲取船隻與坐位
 local function getMyShip()
     local myChar = LocalPlayer.Character
     if myChar and myChar:FindFirstChild("Humanoid") and myChar.Humanoid.SeatPart then
-        -- 獲取船隻模型 (向上尋找模型)
         local current = myChar.Humanoid.SeatPart
         while current.Parent and not current:IsA("Model") do
             current = current.Parent
@@ -82,17 +101,19 @@ local function getMyShip()
     return nil, nil
 end
 
--- 獲取除了自己正在坐的那個以外的空位
-local function getTargetSeat(ship, mySeat)
-    for _, part in pairs(ship:GetDescendants()) do
-        if (part:IsA("Seat") or part:IsA("VehicleSeat")) and part ~= mySeat and not part.Occupant then
-            return part
-        end
+-- 執行傳送 (帶船或單人)
+local function teleportAction(targetCFrame)
+    local myShip, _ = getMyShip()
+    local myChar = LocalPlayer.Character
+    
+    if myShip and myShip.PrimaryPart then
+        myShip:SetPrimaryPartCFrame(targetCFrame)
+    elseif myChar and myChar:FindFirstChild("HumanoidRootPart") then
+        myChar.HumanoidRootPart.CFrame = targetCFrame
     end
-    return nil
 end
 
--- 更新清單
+-- 更新玩家列表
 local function updateList()
     for _, child in pairs(PlayerList:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
     for _, p in pairs(Player:GetPlayers()) do
@@ -110,29 +131,30 @@ end
 
 updateList()
 
--- 開關
+-- 按鈕事件
 ShipTpBtn.MouseButton1Click:Connect(function()
     shipTpToggle = not shipTpToggle
-    ShipTpBtn.Text = "帶船傳送至目標: " .. (shipTpToggle and "ON" or "OFF")
+    ShipTpBtn.Text = "帶船追蹤目標: " .. (shipTpToggle and "ON" or "OFF")
     ShipTpBtn.BackgroundColor3 = shipTpToggle and Color3.fromRGB(180, 60, 60) or Color3.fromRGB(60, 130, 60)
 end)
 
--- 帶船傳送循環
+TpBtn1.MouseButton1Click:Connect(function()
+    teleportAction(CFrame.new(941, 252, 32900))
+end)
+
+TpBtn2.MouseButton1Click:Connect(function()
+    teleportAction(CFrame.new(2283, 19, 911))
+end)
+
+-- 帶船追蹤循環
 RunService.Heartbeat:Connect(function()
     if shipTpToggle and selectedTarget and selectedTarget.Character then
         local targetHRP = selectedTarget.Character:FindFirstChild("HumanoidRootPart")
         local myShip, mySeat = getMyShip()
         
         if myShip and targetHRP and mySeat then
-            local emptySeat = getTargetSeat(myShip, mySeat)
-            
-            if emptySeat then
-
-                local relativeOffset = myShip:GetPrimaryPartCFrame():Inverse() * emptySeat.CFrame
-                myShip:SetPrimaryPartCFrame(targetHRP.CFrame * relativeOffset:Inverse())
-            else
-                myShip:SetPrimaryPartCFrame(targetHRP.CFrame * CFrame.new(0, 5, 0))
-            end
+            -- 嘗試對準目標玩家旁邊的位置
+            myShip:SetPrimaryPartCFrame(targetHRP.CFrame * CFrame.new(0, 5, 5))
         end
     end
 end)
