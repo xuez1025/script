@@ -206,23 +206,31 @@ Tabs.BoatKill:Button({
 
 Tabs.Settings:Section({ Title = "Boat Kill" })
 
-Tabs.Settings:Keybind({ 
-    Title = "快捷鍵", 
-    Value = CurrentKey,
-    Callback = function(v)
-        CurrentKey = v
-        if not KeyDisabled then Window:SetToggleKey(Enum.KeyCode[v]) end
-    end
-})
+    Tabs.Settings:Keybind({ 
+        Title = "快捷鍵", 
+        Desc = "可更改", 
+        Value = CurrentKey,
+        Callback = function(v)
+            CurrentKey = v
+            if not KeyDisabled then
+                Window:SetToggleKey(Enum.KeyCode[v])
+            end
+        end
+    })
 
-Tabs.Settings:Toggle({
-    Title = "停用快捷鍵",
-    Value = false,
-    Callback = function(state)
-        KeyDisabled = state
-        Window:SetToggleKey(state and nil or Enum.KeyCode[CurrentKey])
-    end
-})
+    Tabs.Settings:Toggle({
+        Title = "停用快捷鍵",
+        Desc = "開啟後將禁用快捷鍵",
+        Value = false,
+        Callback = function(state)
+            KeyDisabled = state
+            if state then
+                Window:SetToggleKey(nil)
+            else
+                Window:SetToggleKey(Enum.KeyCode[CurrentKey])
+            end
+        end
+    })
 
 --------------------
 -- 背景循環邏輯 --
