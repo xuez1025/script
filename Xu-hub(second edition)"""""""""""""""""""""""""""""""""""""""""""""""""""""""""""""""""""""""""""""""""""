@@ -146,7 +146,7 @@ local CurrentZoom = 1000
 
 local Hitbox = { Enabled = false, Size = 1, Transparency = 0.5, Connections = {} }
 
-local FlyTP  = { Enabled = false, HoverHeight = 10, SearchRange = 500 }
+local FlyTP  = { Enabled = false, HoverHeight = 20, SearchRange = 500 }
 local BringNPC = { Enabled = false, PullRange = 100 }
 local flyConn  = nil
 local pullConn = nil
@@ -1550,6 +1550,36 @@ end)
     }
 
     -- General
+    Tabs.General:Section({ Title = "切換目前隊伍" })
+
+-- 加入海賊按鈕
+Tabs.General:Button({
+    Title = "加入海賊",
+    Callback = function()
+        local success = ReplicatedStorage.Remotes.CommF_:InvokeServer("SetTeam", "Pirates")
+        
+        WindUI:Notify({
+            Title = "隊伍切換",
+            Content = "正在嘗試加入海賊...",
+            Duration = 3
+        })
+    end
+})
+
+-- 加入海軍按鈕
+Tabs.General:Button({
+    Title = "加入海軍",
+    Callback = function()
+        local success = ReplicatedStorage.Remotes.CommF_:InvokeServer("SetTeam", "Marines")
+        
+        WindUI:Notify({
+            Title = "隊伍切換",
+            Content = "正在嘗試加入海軍...",
+            Duration = 3
+        })
+    end
+})
+
     Tabs.General:Section({ Title = "通用" })
     Tabs.General:Toggle({ Title = "ESP", Desc = "顯示玩家名稱、血量與距離", Value = false,
         Callback = function(state)
@@ -1566,8 +1596,37 @@ end)
         Callback = function(state) setWaterWalkState(state) end
     })
     Tabs.General:Button({ Title = "Remove Lava", Desc = "僅限二海岩漿",
-        Callback = function() removeLava() end
+        Callback = function()
+		WindUI:Notify({ Title = "已移除岩漿傷害", Content = "移除岩漿傷害物件", Duration = 5 })
+		removeLava() end
     })
+	Tabs.General:Button({
+    Title = "移除鬼船傷害",
+    Desc = "移除鬼船傷害物件",
+    Callback = function()
+        local count = 0
+        -- 遍歷工作區尋找可能的傷害物件
+        for _, v in pairs(game:GetService("Workspace"):GetDescendants()) do
+            -- 這裡根據常見的遊戲邏輯過濾，你可以根據具體遊戲修改名稱
+            if v:IsA("TouchTransmitter") then
+                local p = v.Parent
+                if p and (p.Name:find("Damage") or p.Name:find("Death") or p.Name:find("Kill") or p.Name:find("Lava")) then
+                    v:Destroy() -- 移除觸發器
+                    count = count + 1
+                end
+            elseif v.Name == "WaterDamage" or v.Name == "SeaDamage" then
+                v:Destroy()
+                count = count + 1
+            end
+        end
+        
+        WindUI:Notify({
+            Title = "清理完成",
+            Content = "已移除 " .. count .. " 個危險物件",
+            Duration = 3
+        })
+    end
+})
     Tabs.General:Slider({ Title = "碰撞箱", Desc = "調整碰撞箱大小",
         Value = { Min = 1, Max = 20, Default = Hitbox.Size },
         Callback = function(value) Hitbox.Size = value; Hitbox:ApplyAll() end
@@ -1920,8 +1979,8 @@ Tabs.PVP:Slider({
         Value = { Min = 0, Max = 2000, Default = FlyTP.SearchRange },
         Callback = function(value) FlyTP.SearchRange = value end
     })
-    Tabs.Farm:Slider({ Title = "拉怪範圍", Desc = "調整拉怪距離 (250m)",
-        Value = { Min = 0, Max = 250, Default = BringNPC.PullRange },
+    Tabs.Farm:Slider({ Title = "拉怪範圍", Desc = "調整拉怪距離 (200m)",
+        Value = { Min = 0, Max = 200, Default = BringNPC.PullRange },
         Callback = function(value) BringNPC.PullRange = value end
     })
     Tabs.Farm:Section({ Title = "Dungeon" })
@@ -2163,7 +2222,14 @@ else
         end
     })
 end
-
+    Tabs.Other:Button({ Title = "Boat Kill",
+        Callback = function()
+            WindUI:Notify({ Title = "Boat Kill", Content = "正在載入 Boat Kill...", Duration = 3 })
+            loadstring(game:HttpGet(
+                "https://raw.githubusercontent.com/xuez1025/script/refs/heads/main/Boat%20kill"
+            ))()
+        end
+    })
 end
 
 
