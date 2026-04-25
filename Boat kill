@@ -6,6 +6,9 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local RunService = game:GetService("RunService")
 
+-- 世界檢測變數
+local World2 = game.PlaceId == 4442272183 or game.PlaceId == 79091703265657
+
 local CurrentKey = "G"
 local KeyDisabled = false
 
@@ -60,6 +63,16 @@ local function GetPlayerList()
     return list
 end
 
+-- 檢測並傳送的封裝函數
+local function safeTeleport(pos, name)
+    if World2 then
+        teleportToPos(pos)
+        WindUI:Notify({ Title = "傳送中", Content = "正在前往: " .. name, Duration = 2 })
+    else
+        WindUI:Notify({ Title = "傳送失敗", Content = "此座標僅限特定世界使用", Duration = 3 })
+    end
+end
+
 -- GUI 視窗建立 --
 
 local Window = WindUI:CreateWindow({
@@ -112,7 +125,7 @@ Tabs.BoatKill:Button({
             if v:IsA("TouchTransmitter") then
                 local p = v.Parent
                 if p and (p.Name:find("Damage") or p.Name:find("Death") or p.Name:find("Kill") or p.Name:find("Lava")) then
-                    v:Destroy() -- 移除觸發器
+                    v:Destroy()
                     count = count + 1
                 end
             elseif v.Name == "WaterDamage" or v.Name == "SeaDamage" then
@@ -121,15 +134,30 @@ Tabs.BoatKill:Button({
             end
         end
         
-        WindUI:Notify({
-            Title = "清理完成",
-            Content = "已移除 " .. count .. " 個危險物件",
-            Duration = 3
-        })
+        WindUI:Notify({ Title = "清理完成", Content = "已移除 " .. count .. " 個危險物件", Duration = 3 })
     end
 })
 
--- 玩家選擇下拉選單 (整合你的要求)
+Tabs.BoatKill:Button({
+    Title = "傳送到船",
+    Desc = "傳送到船隻駕駛座",
+    Callback = function()
+        local myShip, mySeat = getMyShip()
+        local targetSeat = nil
+        for _, v in pairs(game.Workspace:GetDescendants()) do
+            if v:IsA("VehicleSeat") and v ~= mySeat then
+                targetSeat = v
+                break 
+            end
+        end
+
+        if targetSeat then
+            teleportToPos(targetSeat.Position)
+            WindUI:Notify({ Title = "傳送成功", Content = "已傳送到船長位置", Duration = 2 })
+        end
+    end
+})
+
 local playerDropdown = Tabs.BoatKill:Dropdown({
     Title = "選擇玩家",
     Values = GetPlayerList(),
@@ -141,17 +169,11 @@ local playerDropdown = Tabs.BoatKill:Dropdown({
                 break 
             end
         end
-        -- 如果有觀戰邏輯可在這裡加入
     end
 })
 
--- 自動刷新玩家列表 (事件驅動)
-Players.PlayerAdded:Connect(function() 
-    playerDropdown:Refresh(GetPlayerList()) 
-end)
-Players.PlayerRemoving:Connect(function() 
-    playerDropdown:Refresh(GetPlayerList()) 
-end)
+Players.PlayerAdded:Connect(function() playerDropdown:Refresh(GetPlayerList()) end)
+Players.PlayerRemoving:Connect(function() playerDropdown:Refresh(GetPlayerList()) end)
 
 Tabs.BoatKill:Toggle({
     Title = "帶船傳送玩家",
@@ -161,15 +183,28 @@ Tabs.BoatKill:Toggle({
     end
 })
 
-Tabs.BoatKill:Section({ Title = "座標傳送" })
+Tabs.BoatKill:Section({ Title = "座標傳送 (僅限對應世界)" })
 
-Tabs.BoatKill:Button({ Title = "鬼船 (致命區)", Callback = function() teleportToPos(Vector3.new(941, 252, 32900)) end })
-Tabs.BoatKill:Button({ Title = "豪宅", Callback = function() teleportToPos(Vector3.new(2285, 15, 910)) end })
-Tabs.BoatKill:Button({ Title = "鬼船外", Callback = function() teleportToPos(Vector3.new(922, 125, 32843)) end })
+Tabs.BoatKill:Button({ 
+    Title = "鬼船 (致命區)", 
+    Callback = function() safeTeleport(Vector3.new(941, 252, 32900), "鬼船 (致命區)") end 
+})
+
+Tabs.BoatKill:Button({ 
+    Title = "豪宅", 
+    Callback = function() safeTeleport(Vector3.new(2285, 15, 910), "豪宅") end 
+})
+
+Tabs.BoatKill:Button({ 
+    Title = "鬼船外", 
+    Callback = function() safeTeleport(Vector3.new(922, 125, 32843), "鬼船外") end 
+})
 
 --------------------
 -- 設定分頁 --
 --------------------
+
+Tabs.Settings:Section({ Title = "Boat Kill" })
 
 Tabs.Settings:Keybind({ 
     Title = "快捷鍵", 
@@ -206,7 +241,6 @@ RunService.Heartbeat:Connect(function()
         if targetHum and not targetHum.SeatPart and targetHRP then
             local emptySeat = getTargetSeat(myShip, mySeat)
             if emptySeat then
-                -- 優化計算：先計算相對位置再乘，減少矩陣運算次數
                 local seatOffset = myShip.PrimaryPart.CFrame:Inverse() * emptySeat.CFrame
                 myShip:SetPrimaryPartCFrame(targetHRP.CFrame * seatOffset:Inverse())
             else
