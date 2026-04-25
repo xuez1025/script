@@ -1,18 +1,16 @@
 -- WindUI 載入
-local WindUI = loadstring(game:HttpGet(
-    "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
-))()
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
 -- 取得服務與玩家
-local Player = game:GetService("Players")
-local LocalPlayer = Player.LocalPlayer
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
 local RunService = game:GetService("RunService")
 
 local CurrentKey = "G"
 local KeyDisabled = false
 
 -- 核心變數
-local selectedTargetName = nil
+local TargetPlayer = nil
 local shipTpToggle = false
 
 --------------------
@@ -23,10 +21,11 @@ local function getMyShip()
     local myChar = LocalPlayer.Character
     if myChar and myChar:FindFirstChild("Humanoid") and myChar.Humanoid.SeatPart then
         local current = myChar.Humanoid.SeatPart
+        local seat = myChar.Humanoid.SeatPart
         while current.Parent and not current:IsA("Model") do
             current = current.Parent
         end
-        return current, myChar.Humanoid.SeatPart
+        return current, seat
     end
     return nil, nil
 end
@@ -50,56 +49,49 @@ local function teleportToPos(pos)
     end
 end
 
--- 取得玩家清單
-local function getPlayerList()
+-- 玩家列表獲取
+local function GetPlayerList()
     local list = {}
-    for _, p in pairs(Player:GetPlayers()) do
-        if p ~= LocalPlayer then
-            table.insert(list, p.Name)
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then 
+            table.insert(list, plr.Name) 
         end
     end
     return list
 end
 
---------------------
 -- GUI 視窗建立 --
---------------------
 
 local Window = WindUI:CreateWindow({
-    Title       = "Xu-hub",
-    Icon        = "user-check",
-    Author      = "by xuez1025",
-    Folder      = "Xu-Hub",
-    Size        = UDim2.fromOffset(600, 450),
-    Transparent = true,
-    Theme       = "Dark",
-    User = {
-        Enabled   = true,
-        Anonymous = false,
-        Callback  = function()
-            WindUI:Notify({ 
-                Title = LocalPlayer.Name, 
-                Content = "ID: " .. LocalPlayer.UserId, 
-                Duration = 3 
-            })
-        end
-    },
-    Acrylic       = false,
-    HideSearchBar = false,
-    SideBarWidth  = 200,
-    OpenButton = {
-        Title           = "Xu-hub",
-        CornerRadius    = UDim.new(1, 0),
-        StrokeThickness = 3,
-        Enabled         = true,
-        OnlyMobile      = false,
-        Draggable       = true,
-        OnlyIcon        = false,
-        Color           = ColorSequence.new(Color3.fromHex("#7F00FF"), Color3.fromHex("#00C6FF")),
-    }
-})
+        Title       = "Xu-hub",
+        Icon        = "user-check",
+        Author      = "by xuez1025",
+        Folder      = "Xu-Hub",
+        Size        = UDim2.fromOffset(600, 400),
+        Transparent = true,
+        Theme       = "Dark",
+        User = {
+            Enabled   = true,
+            Anonymous = false,
+            Callback  = function()
+                WindUI:Notify({ Title = LocalPlayer.Name, Content = "ID: " .. LocalPlayer.UserId, Duration = 3 })
+            end
+        },
+        Acrylic       = false,
+        HideSearchBar = false,
+        SideBarWidth  = 200,
+        OpenButton = {
+            Title           = "Xu-hub",
+            CornerRadius    = UDim.new(1, 0),
+            StrokeThickness = 3,
+            Enabled         = true,
+            OnlyMobile      = false,
+            Draggable       = true,
+            OnlyIcon        = false,
+            Color           = ColorSequence.new(Color3.fromHex("#7F00FF"), Color3.fromHex("#00C6FF")),
+      }
+  })
 
--- 建立分頁
 local Tabs = {
     BoatKill = Window:Tab({ Title = "Boat kill", Icon = "ship" }),
     Settings = Window:Tab({ Title = "設定",     Icon = "settings" }),
@@ -111,25 +103,56 @@ local Tabs = {
 
 Tabs.BoatKill:Section({ Title = "Boat Kill" })
 
--- 選擇玩家下拉選單
-local PlayerDropdown = Tabs.BoatKill:Dropdown({
-    Title = "選擇玩家",
-    Multi = false,
-    Options = getPlayerList(),
-    Callback = function(v)
-        selectedTargetName = v
+Tabs.BoatKill:Button({
+    Title = "移除鬼船傷害",
+    Desc = "移除鬼船傷害物件",
+    Callback = function()
+        local count = 0
+        for _, v in pairs(game:GetService("Workspace"):GetDescendants()) do
+            if v:IsA("TouchTransmitter") then
+                local p = v.Parent
+                if p and (p.Name:find("Damage") or p.Name:find("Death") or p.Name:find("Kill") or p.Name:find("Lava")) then
+                    v:Destroy() -- 移除觸發器
+                    count = count + 1
+                end
+            elseif v.Name == "WaterDamage" or v.Name == "SeaDamage" then
+                v:Destroy()
+                count = count + 1
+            end
+        end
+        
+        WindUI:Notify({
+            Title = "清理完成",
+            Content = "已移除 " .. count .. " 個危險物件",
+            Duration = 3
+        })
     end
 })
 
--- 自動更新名單邏輯 (每 5 秒檢查一次是否有玩家進出)
-task.spawn(function()
-    while task.wait(5) do
-        local currentList = getPlayerList()
-        PlayerDropdown:Refresh(currentList, true)
+-- 玩家選擇下拉選單 (整合你的要求)
+local playerDropdown = Tabs.BoatKill:Dropdown({
+    Title = "選擇玩家",
+    Values = GetPlayerList(),
+    Value = nil,
+    Callback = function(option)
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr.Name == option then 
+                TargetPlayer = plr 
+                break 
+            end
+        end
+        -- 如果有觀戰邏輯可在這裡加入
     end
+})
+
+-- 自動刷新玩家列表 (事件驅動)
+Players.PlayerAdded:Connect(function() 
+    playerDropdown:Refresh(GetPlayerList()) 
+end)
+Players.PlayerRemoving:Connect(function() 
+    playerDropdown:Refresh(GetPlayerList()) 
 end)
 
--- 帶船追蹤開關
 Tabs.BoatKill:Toggle({
     Title = "帶船傳送玩家",
     Value = false,
@@ -140,93 +163,57 @@ Tabs.BoatKill:Toggle({
 
 Tabs.BoatKill:Section({ Title = "座標傳送" })
 
-Tabs.BoatKill:Button({
-    Title = "鬼船 (致命區)",
-    Callback = function()
-        teleportToPos(Vector3.new(941, 252, 32900))
-    end
-})
-
-Tabs.BoatKill:Button({
-    Title = "豪宅",
-    Callback = function()
-        teleportToPos(Vector3.new(2285, 15, 910))
-    end
-})
-
-Tabs.BoatKill:Button({
-    Title = "鬼船外",
-    Callback = function()
-        teleportToPos(Vector3.new(922, 125, 32843))
-    end
-})
+Tabs.BoatKill:Button({ Title = "鬼船 (致命區)", Callback = function() teleportToPos(Vector3.new(941, 252, 32900)) end })
+Tabs.BoatKill:Button({ Title = "豪宅", Callback = function() teleportToPos(Vector3.new(2285, 15, 910)) end })
+Tabs.BoatKill:Button({ Title = "鬼船外", Callback = function() teleportToPos(Vector3.new(922, 125, 32843)) end })
 
 --------------------
 -- 設定分頁 --
 --------------------
 
-Tabs.Settings:Section({ Title = "選單設定" })
-
 Tabs.Settings:Keybind({ 
     Title = "快捷鍵", 
-    Desc = "切換選單顯示/隱藏", 
     Value = CurrentKey,
     Callback = function(v)
         CurrentKey = v
-        if not KeyDisabled then
-            Window:SetToggleKey(Enum.KeyCode[v])
-        end
+        if not KeyDisabled then Window:SetToggleKey(Enum.KeyCode[v]) end
     end
 })
 
 Tabs.Settings:Toggle({
     Title = "停用快捷鍵",
-    Desc = "開啟後將禁用快捷鍵",
     Value = false,
     Callback = function(state)
         KeyDisabled = state
-        if state then
-            Window:SetToggleKey(nil)
-        else
-            Window:SetToggleKey(Enum.KeyCode[CurrentKey])
-        end
+        Window:SetToggleKey(state and nil or Enum.KeyCode[CurrentKey])
     end
 })
 
 --------------------
--- 背景循環 (追蹤) --
+-- 背景循環邏輯 --
 --------------------
 
 RunService.Heartbeat:Connect(function()
-    if shipTpToggle and selectedTargetName then
-        local targetPlayer = Player:FindFirstChild(selectedTargetName)
-        
-        -- 檢查目標玩家是否存在且有角色
-        if targetPlayer and targetPlayer.Character then
-            local targetHum = targetPlayer.Character:FindFirstChild("Humanoid")
-            local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-            local myShip, mySeat = getMyShip()
+    if not shipTpToggle or not TargetPlayer then return end
+    
+    local myShip, mySeat = getMyShip()
+    if not myShip then return end
 
-            -- 如果目標玩家正在坐著，跳過傳送以防邏輯衝突
-            if targetHum and targetHum.SeatPart then
-                return 
-            end
-            
-            -- 原有的傳送邏輯
-            if myShip and targetHRP and mySeat then
-                local emptySeat = getTargetSeat(myShip, mySeat)
-                if emptySeat then
-                    -- 讓船對準空位傳送到玩家位置
-                    local relativeOffset = myShip:GetPrimaryPartCFrame():Inverse() * emptySeat.CFrame
-                    myShip:SetPrimaryPartCFrame(targetHRP.CFrame * relativeOffset:Inverse())
-                else
-                    -- 沒空位就直接疊上去
-                    myShip:SetPrimaryPartCFrame(targetHRP.CFrame * CFrame.new(0, 5, 0))
-                end
+    if TargetPlayer.Character then
+        local targetHum = TargetPlayer.Character:FindFirstChild("Humanoid")
+        local targetHRP = TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
+
+        if targetHum and not targetHum.SeatPart and targetHRP then
+            local emptySeat = getTargetSeat(myShip, mySeat)
+            if emptySeat then
+                -- 優化計算：先計算相對位置再乘，減少矩陣運算次數
+                local seatOffset = myShip.PrimaryPart.CFrame:Inverse() * emptySeat.CFrame
+                myShip:SetPrimaryPartCFrame(targetHRP.CFrame * seatOffset:Inverse())
+            else
+                myShip:SetPrimaryPartCFrame(targetHRP.CFrame * CFrame.new(0, 5, 0))
             end
         end
     end
 end)
 
--- 初始化選單快捷鍵
 Window:SetToggleKey(Enum.KeyCode[CurrentKey])
