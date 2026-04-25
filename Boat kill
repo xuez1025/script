@@ -69,7 +69,7 @@ local function safeTeleport(pos, name)
         teleportToPos(pos)
         WindUI:Notify({ Title = "傳送中", Content = "正在前往: " .. name, Duration = 2 })
     else
-        WindUI:Notify({ Title = "傳送失敗", Content = "此座標僅限特定世界使用", Duration = 3 })
+        WindUI:Notify({ Title = "傳送失敗", Content = "此座標僅限特定海域使用", Duration = 3 })
     end
 end
 
@@ -183,7 +183,7 @@ Tabs.BoatKill:Toggle({
     end
 })
 
-Tabs.BoatKill:Section({ Title = "座標傳送 (僅限對應世界)" })
+Tabs.BoatKill:Section({ Title = "座標傳送 (僅限對應海域)" })
 
 Tabs.BoatKill:Button({ 
     Title = "鬼船 (致命區)", 
