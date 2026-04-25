@@ -1,141 +1,23 @@
--- [[ Blox Fruits 帶船傳送工具 - 尊爵美化整合版 ]] --
+-- WindUI 載入
+local WindUI = loadstring(game:HttpGet(
+    "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
+))()
 
+-- 取得服務與玩家
 local Player = game:GetService("Players")
 local LocalPlayer = Player.LocalPlayer
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
 
--- 基礎物件
-local ScreenGui = Instance.new("ScreenGui")
-local MainFrame = Instance.new("Frame")
-local UICorner_Main = Instance.new("UICorner")
-local TitleBar = Instance.new("Frame")
-local UICorner_Title = Instance.new("UICorner")
-local Title = Instance.new("TextLabel")
-local CloseBtn = Instance.new("TextButton")
-local MinBtn = Instance.new("TextButton")
-local ContentFrame = Instance.new("Frame")
-local PlayerList = Instance.new("ScrollingFrame")
-local UIListLayout = Instance.new("UIListLayout")
-local ShipTpBtn = Instance.new("TextButton")
-local PosTpBtn1 = Instance.new("TextButton")
-local PosTpBtn2 = Instance.new("TextButton")
-local MinimizedBtn = Instance.new("TextButton") -- 縮小後的小按鈕
+local CurrentKey = "G"
+local KeyDisabled = false
 
--- 初始化 GUI
-ScreenGui.Name = "BF_ShipTeleport_Premium"
-ScreenGui.Parent = game:GetService("CoreGui")
-ScreenGui.ResetOnSpawn = false
-
--- 縮小後的還原按鈕
-MinimizedBtn.Name = "RestoreBtn"
-MinimizedBtn.Parent = ScreenGui
-MinimizedBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 120)
-MinimizedBtn.Position = UDim2.new(0.5, -50, 0.05, 0)
-MinimizedBtn.Size = UDim2.new(0, 100, 0, 30)
-MinimizedBtn.Text = "開啟選單"
-MinimizedBtn.TextColor3 = Color3.new(1, 1, 1)
-MinimizedBtn.Visible = false
-local UICorner_Min = Instance.new("UICorner")
-UICorner_Min.CornerRadius = UDim.new(0, 8)
-UICorner_Min.Parent = MinimizedBtn
-
--- 主面板
-MainFrame.Name = "MainFrame"
-MainFrame.Parent = ScreenGui
-MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-MainFrame.Position = UDim2.new(0.5, -125, 0.5, -225)
-MainFrame.Size = UDim2.new(0, 250, 0, 450)
-MainFrame.Active = true
-MainFrame.Draggable = true
-UICorner_Main.CornerRadius = UDim.new(0, 10)
-UICorner_Main.Parent = MainFrame
-
--- 標題列
-TitleBar.Size = UDim2.new(1, 0, 0, 35)
-TitleBar.BackgroundColor3 = Color3.fromRGB(50, 50, 90)
-TitleBar.Parent = MainFrame
-UICorner_Title.CornerRadius = UDim.new(0, 10)
-UICorner_Title.Parent = TitleBar
-
-Title.Text = " 船隻傳送助手 V3"
-Title.TextColor3 = Color3.new(1,1,1)
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Size = UDim2.new(1, -70, 1, 0)
-Title.BackgroundTransparency = 1
-Title.Parent = TitleBar
-
--- 關閉與縮小按鈕
-CloseBtn.Text = "X"
-CloseBtn.TextColor3 = Color3.new(1,1,1)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
-CloseBtn.Position = UDim2.new(1, -30, 0, 5)
-CloseBtn.Size = UDim2.new(0, 25, 0, 25)
-CloseBtn.Parent = TitleBar
-local UICorner_C = Instance.new("UICorner")
-UICorner_C.CornerRadius = UDim.new(1, 0)
-UICorner_C.Parent = CloseBtn
-
-MinBtn.Text = "-"
-MinBtn.TextColor3 = Color3.new(1,1,1)
-MinBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-MinBtn.Position = UDim2.new(1, -60, 0, 5)
-MinBtn.Size = UDim2.new(0, 25, 0, 25)
-MinBtn.Parent = TitleBar
-local UICorner_M = Instance.new("UICorner")
-UICorner_M.CornerRadius = UDim.new(1, 0)
-UICorner_M.Parent = MinBtn
-
--- 內容區域
-ContentFrame.Position = UDim2.new(0, 0, 0, 35)
-ContentFrame.Size = UDim2.new(1, 0, 1, -35)
-ContentFrame.BackgroundTransparency = 1
-ContentFrame.Parent = MainFrame
-
-PlayerList.Size = UDim2.new(0.9, 0, 0.45, 0)
-PlayerList.Position = UDim2.new(0.05, 0, 0.05, 0)
-PlayerList.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-PlayerList.BorderSizePixel = 0
-PlayerList.Parent = ContentFrame
-UIListLayout.Parent = PlayerList
-UIListLayout.Padding = UDim.new(0, 5)
-
--- 功能按鈕通用樣式
-local function styleButton(btn, color)
-    btn.TextColor3 = Color3.new(1,1,1)
-    btn.BackgroundColor3 = color
-    btn.Font = Enum.Font.SourceSansBold
-    btn.TextSize = 16
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = btn
-end
-
--- 帶船追蹤按鈕
-ShipTpBtn.Text = "帶船追蹤: OFF"
-ShipTpBtn.Position = UDim2.new(0.1, 0, 0.55, 0)
-ShipTpBtn.Size = UDim2.new(0.8, 0, 0, 40)
-ShipTpBtn.Parent = ContentFrame
-styleButton(ShipTpBtn, Color3.fromRGB(60, 130, 60))
-
--- 座標傳送 A
-PosTpBtn1.Text = "鬼船(致命區)"
-PosTpBtn1.Position = UDim2.new(0.1, 0, 0.67, 0)
-PosTpBtn1.Size = UDim2.new(0.8, 0, 0, 45)
-PosTpBtn1.Parent = ContentFrame
-styleButton(PosTpBtn1, Color3.fromRGB(100, 70, 150))
-
--- 座標傳送 B
-PosTpBtn2.Text = "豪宅"
-PosTpBtn2.Position = UDim2.new(0.1, 0, 0.8, 0)
-PosTpBtn2.Size = UDim2.new(0.8, 0, 0, 45)
-PosTpBtn2.Parent = ContentFrame
-styleButton(PosTpBtn2, Color3.fromRGB(70, 120, 150))
-
---- [[ 核心邏輯 (不變) ]] ---
-
-local selectedTarget = nil
+-- 核心變數
+local selectedTargetName = nil
 local shipTpToggle = false
+
+--------------------
+-- 核心邏輯函數 --
+--------------------
 
 local function getMyShip()
     local myChar = LocalPlayer.Character
@@ -168,70 +50,183 @@ local function teleportToPos(pos)
     end
 end
 
--- 更新清單
-local function updateList()
-    for _, child in pairs(PlayerList:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
+-- 取得玩家清單
+local function getPlayerList()
+    local list = {}
     for _, p in pairs(Player:GetPlayers()) do
         if p ~= LocalPlayer then
-            local btn = Instance.new("TextButton")
-            btn.Size = UDim2.new(0.95, 0, 0, 30)
-            btn.Text = " " .. p.DisplayName
-            btn.TextXAlignment = Enum.TextXAlignment.Left
-            btn.BackgroundColor3 = (selectedTarget == p) and Color3.fromRGB(80, 80, 160) or Color3.fromRGB(60, 60, 65)
-            btn.TextColor3 = Color3.new(1,1,1)
-            btn.Parent = PlayerList
-            local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 5) c.Parent = btn
-            btn.MouseButton1Click:Connect(function() selectedTarget = p; updateList() end)
+            table.insert(list, p.Name)
         end
     end
+    return list
 end
 
-updateList()
-Player.PlayerAdded:Connect(updateList)
-Player.PlayerRemoving:Connect(updateList)
+--------------------
+-- GUI 視窗建立 --
+--------------------
 
--- 交互事件
-ShipTpBtn.MouseButton1Click:Connect(function()
-    shipTpToggle = not shipTpToggle
-    ShipTpBtn.Text = "帶船追蹤: " .. (shipTpToggle and "ON" or "OFF")
-    ShipTpBtn.BackgroundColor3 = shipTpToggle and Color3.fromRGB(180, 60, 60) or Color3.fromRGB(60, 130, 60)
+local Window = WindUI:CreateWindow({
+    Title       = "Xu-hub",
+    Icon        = "user-check",
+    Author      = "by xuez1025",
+    Folder      = "Xu-Hub",
+    Size        = UDim2.fromOffset(600, 450),
+    Transparent = true,
+    Theme       = "Dark",
+    User = {
+        Enabled   = true,
+        Anonymous = false,
+        Callback  = function()
+            WindUI:Notify({ 
+                Title = LocalPlayer.Name, 
+                Content = "ID: " .. LocalPlayer.UserId, 
+                Duration = 3 
+            })
+        end
+    },
+    Acrylic       = false,
+    HideSearchBar = false,
+    SideBarWidth  = 200,
+    OpenButton = {
+        Title           = "Xu-hub",
+        CornerRadius    = UDim.new(1, 0),
+        StrokeThickness = 3,
+        Enabled         = true,
+        OnlyMobile      = false,
+        Draggable       = true,
+        OnlyIcon        = false,
+        Color           = ColorSequence.new(Color3.fromHex("#7F00FF"), Color3.fromHex("#00C6FF")),
+    }
+})
+
+-- 建立分頁
+local Tabs = {
+    BoatKill = Window:Tab({ Title = "Boat kill", Icon = "ship" }),
+    Settings = Window:Tab({ Title = "設定",     Icon = "settings" }),
+}
+
+--------------------
+-- Boat Kill 分頁 --
+--------------------
+
+Tabs.BoatKill:Section({ Title = "Boat Kill" })
+
+-- 選擇玩家下拉選單
+local PlayerDropdown = Tabs.BoatKill:Dropdown({
+    Title = "選擇玩家",
+    Multi = false,
+    Options = getPlayerList(),
+    Callback = function(v)
+        selectedTargetName = v
+    end
+})
+
+-- 自動更新名單邏輯 (每 5 秒檢查一次是否有玩家進出)
+task.spawn(function()
+    while task.wait(5) do
+        local currentList = getPlayerList()
+        PlayerDropdown:Refresh(currentList, true)
+    end
 end)
 
-PosTpBtn1.MouseButton1Click:Connect(function()
-    teleportToPos(Vector3.new(941, 252, 32900))
-end)
+-- 帶船追蹤開關
+Tabs.BoatKill:Toggle({
+    Title = "帶船傳送玩家",
+    Value = false,
+    Callback = function(state)
+        shipTpToggle = state
+    end
+})
 
-PosTpBtn2.MouseButton1Click:Connect(function()
-    teleportToPos(Vector3.new(2285, 15, 910))
-end)
+Tabs.BoatKill:Section({ Title = "座標傳送" })
 
--- 縮小功能
-MinBtn.MouseButton1Click:Connect(function()
-    MainFrame.Visible = false
-    MinimizedBtn.Visible = true
-end)
+Tabs.BoatKill:Button({
+    Title = "鬼船 (致命區)",
+    Callback = function()
+        teleportToPos(Vector3.new(941, 252, 32900))
+    end
+})
 
-MinimizedBtn.MouseButton1Click:Connect(function()
-    MainFrame.Visible = true
-    MinimizedBtn.Visible = false
-end)
+Tabs.BoatKill:Button({
+    Title = "豪宅",
+    Callback = function()
+        teleportToPos(Vector3.new(2285, 15, 910))
+    end
+})
 
-CloseBtn.MouseButton1Click:Connect(function() ScreenGui:Destroy() end)
+Tabs.BoatKill:Button({
+    Title = "鬼船外",
+    Callback = function()
+        teleportToPos(Vector3.new(922, 125, 32843))
+    end
+})
 
--- 帶船追蹤循環
+--------------------
+-- 設定分頁 --
+--------------------
+
+Tabs.Settings:Section({ Title = "選單設定" })
+
+Tabs.Settings:Keybind({ 
+    Title = "快捷鍵", 
+    Desc = "切換選單顯示/隱藏", 
+    Value = CurrentKey,
+    Callback = function(v)
+        CurrentKey = v
+        if not KeyDisabled then
+            Window:SetToggleKey(Enum.KeyCode[v])
+        end
+    end
+})
+
+Tabs.Settings:Toggle({
+    Title = "停用快捷鍵",
+    Desc = "開啟後將禁用快捷鍵",
+    Value = false,
+    Callback = function(state)
+        KeyDisabled = state
+        if state then
+            Window:SetToggleKey(nil)
+        else
+            Window:SetToggleKey(Enum.KeyCode[CurrentKey])
+        end
+    end
+})
+
+--------------------
+-- 背景循環 (追蹤) --
+--------------------
+
 RunService.Heartbeat:Connect(function()
-    if shipTpToggle and selectedTarget and selectedTarget.Character then
-        local targetHRP = selectedTarget.Character:FindFirstChild("HumanoidRootPart")
-        local myShip, mySeat = getMyShip()
+    if shipTpToggle and selectedTargetName then
+        local targetPlayer = Player:FindFirstChild(selectedTargetName)
         
-        if myShip and targetHRP and mySeat then
-            local emptySeat = getTargetSeat(myShip, mySeat)
-            if emptySeat then
-                local relativeOffset = myShip:GetPrimaryPartCFrame():Inverse() * emptySeat.CFrame
-                myShip:SetPrimaryPartCFrame(targetHRP.CFrame * relativeOffset:Inverse())
-            else
-                myShip:SetPrimaryPartCFrame(targetHRP.CFrame * CFrame.new(0, 5, 0))
+        -- 檢查目標玩家是否存在且有角色
+        if targetPlayer and targetPlayer.Character then
+            local targetHum = targetPlayer.Character:FindFirstChild("Humanoid")
+            local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+            local myShip, mySeat = getMyShip()
+
+            -- 如果目標玩家正在坐著，跳過傳送以防邏輯衝突
+            if targetHum and targetHum.SeatPart then
+                return 
+            end
+            
+            -- 原有的傳送邏輯
+            if myShip and targetHRP and mySeat then
+                local emptySeat = getTargetSeat(myShip, mySeat)
+                if emptySeat then
+                    -- 讓船對準空位傳送到玩家位置
+                    local relativeOffset = myShip:GetPrimaryPartCFrame():Inverse() * emptySeat.CFrame
+                    myShip:SetPrimaryPartCFrame(targetHRP.CFrame * relativeOffset:Inverse())
+                else
+                    -- 沒空位就直接疊上去
+                    myShip:SetPrimaryPartCFrame(targetHRP.CFrame * CFrame.new(0, 5, 0))
+                end
             end
         end
     end
 end)
+
+-- 初始化選單快捷鍵
+Window:SetToggleKey(Enum.KeyCode[CurrentKey])
