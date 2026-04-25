@@ -45,16 +45,7 @@ WindUI:Popup({
               
               -- 建立分頁
               local Tabs = {
-                  General  = Window:Tab({ Title = "通用",   Icon = "house"    }),
-                  Server   = Window:Tab({ Title = "Server", Icon = "server"   }),
-                  Status   = Window:Tab({ Title = "狀態",   Icon = "activity" }),
-                  PVP      = Window:Tab({ Title = "PVP",    Icon = "swords"   }),
-                  Farm     = Window:Tab({ Title = "Farm",   Icon = "leaf"     }),
-                  Auto     = Window:Tab({ Title = "自動",   Icon = "cpu"      }),
-                  Settings = Window:Tab({ Title = "設定",   Icon = "settings" }),
-                  Teleport = Window:Tab({ Title = "傳送",   Icon = "map-pin"  }),
-                  Fun      = Window:Tab({ Title = "娛樂",   Icon = "smile"    }),
-                  Other    = Window:Tab({ Title = "其他",   Icon = "ellipsis" }),
+                  Other    = Window:Tab({ Title = "其他",   Icon = "ellipsis" })
               }
               
               -- 之後接上所有 Tab 內容...
