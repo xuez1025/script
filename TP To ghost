@@ -1,0 +1,140 @@
+-- [[ Blox Fruits 帶船傳送工具 ]] --
+
+local Player = game:GetService("Players")
+local LocalPlayer = Player.LocalPlayer
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+-- 介面設置
+local ScreenGui = Instance.new("ScreenGui")
+local MainFrame = Instance.new("Frame")
+local TitleBar = Instance.new("Frame")
+local Title = Instance.new("TextLabel")
+local CloseBtn = Instance.new("TextButton")
+local ContentFrame = Instance.new("Frame")
+local PlayerList = Instance.new("ScrollingFrame")
+local UIListLayout = Instance.new("UIListLayout")
+local ShipTpBtn = Instance.new("TextButton")
+
+ScreenGui.Name = "BF_ShipTeleport_GUI"
+ScreenGui.Parent = game:GetService("CoreGui")
+
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+MainFrame.Position = UDim2.new(0.5, -125, 0.5, -150)
+MainFrame.Size = UDim2.new(0, 250, 0, 350)
+MainFrame.Active = true
+MainFrame.Draggable = true
+
+TitleBar.Size = UDim2.new(1, 0, 0, 35)
+TitleBar.BackgroundColor3 = Color3.fromRGB(70, 70, 120)
+TitleBar.Parent = MainFrame
+
+Title.Text = "帶船傳送助手"
+Title.TextColor3 = Color3.new(1,1,1)
+Title.Size = UDim2.new(1, -40, 1, 0)
+Title.BackgroundTransparency = 1
+Title.Parent = TitleBar
+
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Color3.new(1,1,1)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
+CloseBtn.Position = UDim2.new(1, -35, 0, 0)
+CloseBtn.Size = UDim2.new(0, 35, 0, 35)
+CloseBtn.Parent = TitleBar
+
+ContentFrame.Position = UDim2.new(0, 0, 0, 35)
+ContentFrame.Size = UDim2.new(1, 0, 1, -35)
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.Parent = MainFrame
+
+PlayerList.Size = UDim2.new(0.9, 0, 0.6, 0)
+PlayerList.Position = UDim2.new(0.05, 0, 0.05, 0)
+PlayerList.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+PlayerList.Parent = ContentFrame
+
+UIListLayout.Parent = PlayerList
+
+ShipTpBtn.Text = "帶船傳送至目標: OFF"
+ShipTpBtn.TextColor3 = Color3.new(1,1,1)
+ShipTpBtn.BackgroundColor3 = Color3.fromRGB(60, 130, 60)
+ShipTpBtn.Position = UDim2.new(0.1, 0, 0.75, 0)
+ShipTpBtn.Size = UDim2.new(0.8, 0, 0, 45)
+ShipTpBtn.Parent = ContentFrame
+
+--- 邏輯實作 ---
+
+local selectedTarget = nil
+local shipTpToggle = false
+
+-- 獲取目前駕駛的船隻根部件 (通常是船的主體或 VehicleSeat)
+local function getMyShip()
+    local myChar = LocalPlayer.Character
+    if myChar and myChar:FindFirstChild("Humanoid") and myChar.Humanoid.SeatPart then
+        -- 獲取船隻模型 (向上尋找模型)
+        local current = myChar.Humanoid.SeatPart
+        while current.Parent and not current:IsA("Model") do
+            current = current.Parent
+        end
+        return current, myChar.Humanoid.SeatPart
+    end
+    return nil, nil
+end
+
+-- 獲取除了自己正在坐的那個以外的空位
+local function getTargetSeat(ship, mySeat)
+    for _, part in pairs(ship:GetDescendants()) do
+        if (part:IsA("Seat") or part:IsA("VehicleSeat")) and part ~= mySeat and not part.Occupant then
+            return part
+        end
+    end
+    return nil
+end
+
+-- 更新清單
+local function updateList()
+    for _, child in pairs(PlayerList:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
+    for _, p in pairs(Player:GetPlayers()) do
+        if p ~= LocalPlayer then
+            local btn = Instance.new("TextButton")
+            btn.Size = UDim2.new(1, 0, 0, 30)
+            btn.Text = p.DisplayName
+            btn.BackgroundColor3 = (selectedTarget == p) and Color3.fromRGB(100, 100, 180) or Color3.fromRGB(50, 50, 55)
+            btn.TextColor3 = Color3.new(1,1,1)
+            btn.Parent = PlayerList
+            btn.MouseButton1Click:Connect(function() selectedTarget = p; updateList() end)
+        end
+    end
+end
+
+updateList()
+
+-- 開關
+ShipTpBtn.MouseButton1Click:Connect(function()
+    shipTpToggle = not shipTpToggle
+    ShipTpBtn.Text = "帶船傳送至目標: " .. (shipTpToggle and "ON" or "OFF")
+    ShipTpBtn.BackgroundColor3 = shipTpToggle and Color3.fromRGB(180, 60, 60) or Color3.fromRGB(60, 130, 60)
+end)
+
+-- 帶船傳送循環
+RunService.Heartbeat:Connect(function()
+    if shipTpToggle and selectedTarget and selectedTarget.Character then
+        local targetHRP = selectedTarget.Character:FindFirstChild("HumanoidRootPart")
+        local myShip, mySeat = getMyShip()
+        
+        if myShip and targetHRP and mySeat then
+            local emptySeat = getTargetSeat(myShip, mySeat)
+            
+            if emptySeat then
+
+                local relativeOffset = myShip:GetPrimaryPartCFrame():Inverse() * emptySeat.CFrame
+                myShip:SetPrimaryPartCFrame(targetHRP.CFrame * relativeOffset:Inverse())
+            else
+                myShip:SetPrimaryPartCFrame(targetHRP.CFrame * CFrame.new(0, 5, 0))
+            end
+        end
+    end
+end)
+
+CloseBtn.MouseButton1Click:Connect(function() ScreenGui:Destroy() end)
