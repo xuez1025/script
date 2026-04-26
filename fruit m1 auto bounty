@@ -3,6 +3,17 @@ local WindUI = loadstring(game:HttpGet(
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
 ))()
 
+-- 防止重複執行
+if _G.XuHubLoaded then
+    WindUI:Notify({
+        Title = "提示",
+        Content = "Xu-hub 已經在運行中，請勿重複加載！",
+        Duration = 3
+    })
+    return
+end
+_G.XuHubLoaded = true
+
 local CurrentKey = "G"
 local KeyDisabled = false
 
