@@ -1,6 +1,11 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+-- UI 創建
 local main = Instance.new("ScreenGui")
 local Frame = Instance.new("Frame")
-local noclip = Instance.new("TextButton")
 local onof = Instance.new("TextButton")
 local TextLabel = Instance.new("TextLabel")
 local plus = Instance.new("TextButton")
@@ -10,178 +15,141 @@ local closebutton = Instance.new("TextButton")
 local mini = Instance.new("TextButton")
 local mini2 = Instance.new("TextButton")
 
--- 基礎設定
-local RunService = game:GetService("RunService")
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-
-main.Name = "main"
+-- 基礎 UI 設定
+main.Name = "CFrameControl_Lite"
 main.Parent = LocalPlayer:WaitForChild("PlayerGui")
 main.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 main.ResetOnSpawn = false
 
 Frame.Parent = main
-Frame.BackgroundColor3 = Color3.fromRGB(163, 255, 137)
-Frame.BorderColor3 = Color3.fromRGB(103, 221, 213)
-Frame.Position = UDim2.new(0.100320168, 0, 0.379746825, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+Frame.Position = UDim2.new(0.1, 0, 0.4, 0)
 Frame.Size = UDim2.new(0, 190, 0, 57)
 Frame.Active = true
 Frame.Draggable = true
 
--- UI 元素配置 (保持你提供的樣式)
-noclip.Name = "noclip"; noclip.Parent = Frame; noclip.BackgroundColor3 = Color3.fromRGB(255, 130, 130); noclip.Position = UDim2.new(0, 0, 0, 0); noclip.Size = UDim2.new(0, 44, 0, 57); noclip.Font = Enum.Font.SourceSans; noclip.Text = "穿牆\nOFF"; noclip.TextColor3 = Color3.fromRGB(0, 0, 0); noclip.TextScaled = true
+local function setupUI(obj, name, pos, size, text, color)
+    obj.Name = name
+    obj.Parent = Frame
+    obj.BackgroundColor3 = color
+    obj.Position = pos
+    obj.Size = size
+    obj.Font = Enum.Font.SourceSansBold
+    obj.Text = text
+    obj.TextColor3 = Color3.fromRGB(255, 255, 255)
+    obj.TextScaled = true
+end
 
-onof.Name = "onof"
-onof.Parent = Frame
-onof.BackgroundColor3 = Color3.fromRGB(255, 249, 74)
-onof.Position = UDim2.new(0.702823281, 0, 0.491228074, 0)
-onof.Size = UDim2.new(0, 56, 0, 28)
-onof.Font = Enum.Font.SourceSans
-onof.Text = "飛行"
-onof.TextColor3 = Color3.fromRGB(0, 0, 0)
-onof.TextSize = 14.000
+setupUI(onof, "onof", UDim2.new(0, 0, 0, 0), UDim2.new(0, 75, 0, 57), "位移:關", Color3.fromRGB(80, 80, 80))
+setupUI(TextLabel, "Title", UDim2.new(0.4, 0, 0, 0), UDim2.new(0, 114, 0, 28), "CFrame (G)", Color3.fromRGB(150, 50, 255))
+setupUI(plus, "plus", UDim2.new(0.4, 0, 0.491, 0), UDim2.new(0, 38, 0, 29), "+", Color3.fromRGB(50, 150, 255))
+setupUI(mine, "mine", UDim2.new(0.8, 0, 0.491, 0), UDim2.new(0, 38, 0, 29), "-", Color3.fromRGB(50, 150, 255))
+setupUI(speed, "speed", UDim2.new(0.6, 0, 0.491, 0), UDim2.new(0, 38, 0, 28), "500", Color3.fromRGB(255, 120, 0))
 
-TextLabel.Parent = Frame; TextLabel.BackgroundColor3 = Color3.fromRGB(242, 60, 255); TextLabel.Position = UDim2.new(0.469327301, 0, 0, 0); TextLabel.Size = UDim2.new(0, 100, 0, 28); TextLabel.Font = Enum.Font.SourceSans; TextLabel.Text = "CFrame Fly V3"; TextLabel.TextColor3 = Color3.fromRGB(0, 0, 0); TextLabel.TextScaled = true
+setupUI(closebutton, "Close", UDim2.new(0, 0, -1, 27), UDim2.new(0, 45, 0, 28), "X", Color3.fromRGB(200, 0, 0))
+setupUI(mini, "Mini", UDim2.new(0, 45, -1, 27), UDim2.new(0, 45, 0, 28), "-", Color3.fromRGB(100, 100, 100))
+setupUI(mini2, "Max", UDim2.new(0, 45, -1, 57), UDim2.new(0, 45, 0, 28), "+", Color3.fromRGB(100, 100, 100))
+mini2.Visible = false
 
-plus.Name = "plus"; plus.Parent = Frame; plus.BackgroundColor3 = Color3.fromRGB(133, 145, 255); plus.Position = UDim2.new(0.231578946, 0, 0, 0); plus.Size = UDim2.new(0, 45, 0, 28); plus.Font = Enum.Font.SourceSans; plus.Text = "加速"; plus.TextColor3 = Color3.fromRGB(0, 0, 0); plus.TextScaled = true
+--- 邏輯控制變數 ---
+local moveSpeed = 500
+local isMoving = false
+local moveConn = nil -- 儲存 Heartbeat 連線
+local inputConn = nil -- 儲存 快捷鍵 連線
 
-speed.Name = "speed"; speed.Parent = Frame; speed.BackgroundColor3 = Color3.fromRGB(255, 85, 0); speed.Position = UDim2.new(0.468421042, 0, 0.491228074, 0); speed.Size = UDim2.new(0, 44, 0, 28); speed.Font = Enum.Font.SourceSans; speed.Text = "50"; speed.TextColor3 = Color3.fromRGB(0, 0, 0); speed.TextScaled = true
+local function updateSpeedDisplay()
+    speed.Text = tostring(moveSpeed)
+end
 
-mine.Name = "mine"; mine.Parent = Frame; mine.BackgroundColor3 = Color3.fromRGB(123, 255, 247); mine.Position = UDim2.new(0.231578946, 0, 0.491228074, 0); mine.Size = UDim2.new(0, 45, 0, 29); mine.Font = Enum.Font.SourceSans; mine.Text = "减速"; mine.TextColor3 = Color3.fromRGB(0, 0, 0); mine.TextScaled = true
+-- ===== 核心控制：CFrame 位移模式 =====
+local function toggleMoveMode()
+    isMoving = not isMoving
+    onof.Text = isMoving and "位移:開" or "位移:關"
+    onof.BackgroundColor3 = isMoving and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(80, 80, 80)
 
-closebutton.Name = "Close"; closebutton.Parent = Frame; closebutton.BackgroundColor3 = Color3.fromRGB(225, 25, 0); closebutton.Font = "SourceSans"; closebutton.Size = UDim2.new(0, 45, 0, 28); closebutton.Text = "關閉"; closebutton.TextSize = 25; closebutton.Position = UDim2.new(0, 0, -1, 27)
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
 
-mini.Name = "minimize"; mini.Parent = Frame; mini.BackgroundColor3 = Color3.fromRGB(192, 150, 230); mini.Font = "SourceSans"; mini.Size = UDim2.new(0, 45, 0, 28); mini.Text = "隱藏"; mini.TextSize = 25; mini.Position = UDim2.new(0, 44, -1, 27)
+    if isMoving and root then
+        root.Anchored = true
+        if moveConn then moveConn:Disconnect() end -- 防止重複連接
+        moveConn = RunService.Heartbeat:Connect(function(dt)
+            if not isMoving or not root.Parent then return end
+            
+            local cam = workspace.CurrentCamera
+            local moveVec = Vector3.new(0, 0, 0)
+            
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveVec = moveVec + cam.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveVec = moveVec - cam.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveVec = moveVec - cam.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveVec = moveVec + cam.CFrame.RightVector end
 
-mini2.Name = "minimize2"; mini2.Parent = Frame; mini2.BackgroundColor3 = Color3.fromRGB(192, 150, 230); mini2.Font = "SourceSans"; mini2.Size = UDim2.new(0, 45, 0, 28); mini2.Text = "展開"; mini2.TextSize = 25; mini2.Position = UDim2.new(0, 44, -1, 57); mini2.Visible = false
-
---- 邏輯變數 ---
-local CFspeed = 50
-local flying = false
-local CFloop = nil
-local noclipOn = false
-local noclipConnection = nil
-
--- 更新速度文字顯示
-speed.Text = tostring(CFspeed)
-
--- ===== 穿牆邏輯 (Noclip) =====
-noclip.MouseButton1Click:Connect(function()
-    noclipOn = not noclipOn
-    if noclipOn then
-        noclip.Text = "穿牆\nON"
-        noclip.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
-        noclipConnection = RunService.Stepped:Connect(function()
-            if LocalPlayer.Character then
-                for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
-                    if part:IsA("BasePart") then part.CanCollide = false end
-                end
+            if moveVec.Magnitude > 0 then
+                root.CFrame = root.CFrame + (moveVec.Unit * moveSpeed * dt)
             end
         end)
     else
-        noclip.Text = "穿牆\nOFF"
-        noclip.BackgroundColor3 = Color3.fromRGB(255, 130, 130)
-        if noclipConnection then noclipConnection:Disconnect() noclipConnection = nil end
-    end
-end)
-
--- ===== 核心飛行邏輯 (CFrameFly) =====
-local function toggleFly()
-    flying = not flying
-    
-    if flying then
-        onof.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
-        local char = LocalPlayer.Character
-        if not char then return end
-        
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        local head = char:WaitForChild("Head")
-        
-        if hum then hum.PlatformStand = true end
-        head.Anchored = true
-        
-        CFloop = RunService.Heartbeat:Connect(function(deltaTime)
-            if not flying or not char.Parent then 
-                if CFloop then CFloop:Disconnect() end 
-                return 
-            end
-            
-            local moveDirection = hum.MoveDirection * (CFspeed * deltaTime)
-            local headCFrame = head.CFrame
-            local camera = workspace.CurrentCamera
-            local cameraCFrame = camera.CFrame
-            
-            local cameraOffset = headCFrame:ToObjectSpace(cameraCFrame).Position
-            cameraCFrame = cameraCFrame * CFrame.new(-cameraOffset.X, -cameraOffset.Y, -cameraOffset.Z + 1)
-            
-            local cameraPosition = cameraCFrame.Position
-            local headPosition = headCFrame.Position
-
-            local objectSpaceVelocity = CFrame.new(cameraPosition, Vector3.new(headPosition.X, cameraPosition.Y, headPosition.Z)):VectorToObjectSpace(moveDirection)
-            head.CFrame = CFrame.new(headPosition) * (cameraCFrame - cameraPosition) * CFrame.new(objectSpaceVelocity)
-        end)
-    else
-        onof.BackgroundColor3 = Color3.fromRGB(255, 249, 74)
-        if CFloop then CFloop:Disconnect() end
-        
-        local char = LocalPlayer.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            local head = char:FindFirstChild("Head")
-            if hum then hum.PlatformStand = false end
-            if head then head.Anchored = false end
-        end
+        if root then root.Anchored = false end
+        if moveConn then moveConn:Disconnect(); moveConn = nil end
     end
 end
 
-onof.MouseButton1Click:Connect(toggleFly)
+-- 將快捷鍵監聽賦值給變數，以便後續關閉
+inputConn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.G then
+        toggleMoveMode()
+    end
+end)
 
--- ===== 速度控制 =====
+onof.MouseButton1Click:Connect(toggleMoveMode)
+
+-- ===== 速度調整 =====
 plus.MouseButton1Click:Connect(function()
-    CFspeed = CFspeed + 10
-    speed.Text = tostring(CFspeed)
+    moveSpeed = math.min(1000, moveSpeed + 100)
+    updateSpeedDisplay()
 end)
 
 mine.MouseButton1Click:Connect(function()
-    if CFspeed > 10 then
-        CFspeed = CFspeed - 10
-    else
-        CFspeed = 1
-    end
-    speed.Text = tostring(CFspeed)
+    moveSpeed = math.max(100, moveSpeed - 100)
+    updateSpeedDisplay()
 end)
 
--- ===== UI 收納功能 =====
+-- ===== UI 收納與關閉 =====
 closebutton.MouseButton1Click:Connect(function()
-    if CFloop then CFloop:Disconnect() end
-    if noclipConnection then noclipConnection:Disconnect() end
+    isMoving = false
+    -- 1. 斷開位移連線
+    if moveConn then moveConn:Disconnect() end
+    -- 2. 斷開快捷鍵連線 (解決你的需求)
+    if inputConn then inputConn:Disconnect() end
+    
+    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if root then root.Anchored = false end
+    
     main:Destroy()
 end)
 
 mini.MouseButton1Click:Connect(function()
-    noclip.Visible = false; onof.Visible = false; plus.Visible = false
-    speed.Visible = false; mine.Visible = false; mini.Visible = false
+    for _, v in pairs(Frame:GetChildren()) do if v:IsA("GuiObject") then v.Visible = false end end
     mini2.Visible = true; Frame.BackgroundTransparency = 1
-    closebutton.Position = UDim2.new(0, 0, -1, 57)
+    closebutton.Visible = true; closebutton.Position = UDim2.new(0, 0, -1, 57)
 end)
 
 mini2.MouseButton1Click:Connect(function()
-    noclip.Visible = true; onof.Visible = true; plus.Visible = true
-    speed.Visible = true; mine.Visible = true; mini.Visible = true
+    for _, v in pairs(Frame:GetChildren()) do if v:IsA("GuiObject") then v.Visible = true end end
     mini2.Visible = false; Frame.BackgroundTransparency = 0
     closebutton.Position = UDim2.new(0, 0, -1, 27)
 end)
 
--- 重生時重置狀態
+-- 重生處理
 LocalPlayer.CharacterAdded:Connect(function()
-    flying = false
-    noclipOn = false
-    onof.BackgroundColor3 = Color3.fromRGB(255, 249, 74)
-    noclip.BackgroundColor3 = Color3.fromRGB(255, 130, 130)
+    isMoving = false
+    if moveConn then moveConn:Disconnect() end
+    onof.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    onof.Text = "位移:關"
 end)
 
 game:GetService("StarterGui"):SetCore("SendNotification", {
-    Title = "CFrame Fly V3";
-    Text = "整合完成！作者:Xu & peyton";
+    Title = "CFLY";
+    Text = "快捷鍵 [G]";
     Duration = 5;
 })
