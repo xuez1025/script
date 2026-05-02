@@ -7,29 +7,24 @@ local ProximityPromptService = game:GetService("ProximityPromptService")
 
 local LocalPlayer = Players.LocalPlayer
 
--- ================== 全域狀態 ==================
-local LogicState = {
+-- ================== 全域配置與狀態 ==================
+local State = {
     AntiAttack = false,
-    AntiAFK = false,
-    AutoBuy = false
+    AutoBuy = false,
+    IsMinimized = false
 }
 
-local lastInputTime = os.time()
-local afkTimeValue = 0
+local Config = {
+    Whitelist = {"Buy", "Purchase", "購買", "Get", "Take", "開蛋", "領取"}, 
+    MinWait = 0.25,
+    MaxWait = 0.45
+}
+
 local currentPrompt = nil
-local originalDurations = {}
 
--- ================== 工具函式 ==================
-local function formatTime(seconds)
-    local h = math.floor(seconds / 3600)
-    local m = math.floor((seconds % 3600) / 60)
-    local s = math.floor(seconds % 60)
-    return string.format("%02dh %02dm %02ds", h, m, s)
-end
-
--- ================== 通知系統 ==================
+-- ================== 統一通知系統 ==================
 local notificationGui = Instance.new("ScreenGui")
-notificationGui.Name = "ModernNotif"
+notificationGui.Name = "SystemNotif"
 notificationGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local notifContainer = Instance.new("Frame")
@@ -54,7 +49,8 @@ local function ShowNotice(msg)
     note.TextXAlignment = Enum.TextXAlignment.Left
     note.Parent = notifContainer
     Instance.new("UICorner", note).CornerRadius = UDim.new(0, 6)
-    Instance.new("UIStroke", note).Color = Color3.fromRGB(100, 100, 120)
+    local st = Instance.new("UIStroke", note)
+    st.Color = Color3.fromRGB(90, 130, 255)
     
     note.Position = UDim2.new(1.5, 0, 0, 0)
     TweenService:Create(note, TweenInfo.new(0.4, Enum.EasingStyle.Back), {Position = UDim2.new(0, 0, 0, 0)}):Play()
@@ -66,223 +62,189 @@ local function ShowNotice(msg)
     end)
 end
 
--- ================== 核心邏輯 ==================
-
--- Anti-AFK 官方機制觸發
-LocalPlayer.Idled:Connect(function()
-    if LogicState.AntiAFK then
-        local VirtualUser = game:GetService("VirtualUser")
-        VirtualUser:CaptureController()
-        VirtualUser:ClickButton2(Vector2.new())
+-- ================== 核心邏輯：Anti-Attack ==================
+RunService.Heartbeat:Connect(function()
+    if State.AntiAttack then
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            char.HumanoidRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        end
     end
 end)
 
--- 自動購買監聽邏輯
+-- ================== 核心邏輯：Auto Buy ==================
+local function IsWhitelisted(prompt)
+    if #Config.Whitelist == 0 then return true end
+    local text = (prompt.ObjectText .. prompt.ActionText):lower()
+    for _, word in pairs(Config.Whitelist) do
+        if text:find(word:lower()) then return true end
+    end
+    return false
+end
+
+local function TriggerPromptDirectly(prompt)
+    if not prompt or not prompt.Enabled then return end
+    task.spawn(function()
+        prompt:InputHoldBegin()
+        if prompt.HoldDuration > 0 then
+            task.wait(prompt.HoldDuration + 0.05)
+        end
+        prompt:InputHoldEnd()
+    end)
+end
+
 ProximityPromptService.PromptShown:Connect(function(prompt)
-    currentPrompt = prompt
-    if not originalDurations[prompt] then
-        originalDurations[prompt] = prompt.HoldDuration
-    end
-    if LogicState.AutoBuy then
-        prompt.HoldDuration = 0
-    end
+    if IsWhitelisted(prompt) then currentPrompt = prompt end
 end)
 
 ProximityPromptService.PromptHidden:Connect(function(prompt)
-    if currentPrompt == prompt then
-        currentPrompt = nil
-    end
+    if currentPrompt == prompt then currentPrompt = nil end
 end)
 
--- 自動購買循環執行器
 task.spawn(function()
     while true do
-        if LogicState.AutoBuy and currentPrompt then
+        if State.AutoBuy and currentPrompt then
             if currentPrompt.Parent and currentPrompt.Enabled then
-                fireproximityprompt(currentPrompt)
+                TriggerPromptDirectly(currentPrompt)
+                task.wait(math.random(Config.MinWait * 100, Config.MaxWait * 100) / 100)
+            else
+                currentPrompt = nil
+                task.wait(0.1)
             end
-            task.wait(math.random(15, 25) / 100) 
         else
             task.wait(0.2)
         end
     end
 end)
 
--- ================== GUI 介面 ==================
+-- ================== 整合 GUI 介面 ==================
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "ModernFarmGUI_Small"
+ScreenGui.Name = "CombinedUtility_UI"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.DisplayOrder = -10 
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-local Frame = Instance.new("Frame")
-Frame.Name = "MainFrame"
-Frame.Size = UDim2.new(0, 220, 0, 260) -- 稍微增加高度以容納三個按鈕
-Frame.Position = UDim2.new(0.5, 0, 1, -20)
-Frame.AnchorPoint = Vector2.new(0.5, 1)
-Frame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-Frame.BorderSizePixel = 0
-Frame.Active = true
-Frame.ZIndex = 0 
-Frame.Parent = ScreenGui
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 220, 0, 160)
+MainFrame.Position = UDim2.new(0.5, 0, 0.9, -20)
+MainFrame.AnchorPoint = Vector2.new(0.5, 1)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+MainFrame.ClipsDescendants = true
+MainFrame.Parent = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
+local MainStroke = Instance.new("UIStroke", MainFrame)
+MainStroke.Color = Color3.fromRGB(90, 130, 255)
+MainStroke.Thickness = 1.5
 
-Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 12)
-local Stroke = Instance.new("UIStroke", Frame)
-Stroke.Color = Color3.fromRGB(90, 130, 255)
-Stroke.Thickness = 1.5
-Stroke.Transparency = 0.5
-
+-- 標題欄
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -60, 0, 35)
-Title.Position = UDim2.new(0, 15, 0, 5)
+Title.Size = UDim2.new(1, 0, 0, 35)
 Title.BackgroundTransparency = 1
-Title.Text = "Brainrot Mini v3"
+Title.Text = "  Multi-Utility HUB"
 Title.TextColor3 = Color3.new(1,1,1)
-Title.TextSize = 15
+Title.TextSize = 14
 Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Frame
+Title.Parent = MainFrame
 
-local CloseButton = Instance.new("TextButton")
-CloseButton.Size = UDim2.new(0, 24, 0, 24)
-CloseButton.Position = UDim2.new(1, -34, 0, 10)
-CloseButton.Text = "×"
-CloseButton.TextColor3 = Color3.new(1,1,1)
-CloseButton.BackgroundColor3 = Color3.fromRGB(215, 55, 55)
-CloseButton.Parent = Frame
-Instance.new("UICorner", CloseButton).CornerRadius = UDim.new(1,0)
-CloseButton.MouseButton1Click:Connect(function() ScreenGui:Destroy(); notificationGui:Destroy() end)
+-- 關閉按鈕
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 25, 0, 25)
+CloseBtn.Position = UDim2.new(1, -30, 0, 5)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Color3.new(1, 1, 1)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.Parent = MainFrame
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
+
+-- 縮小按鈕
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size = UDim2.new(0, 25, 0, 25)
+MinBtn.Position = UDim2.new(1, -60, 0, 5)
+MinBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+MinBtn.Text = "-"
+MinBtn.TextColor3 = Color3.new(1, 1, 1)
+MinBtn.Font = Enum.Font.GothamBold
+MinBtn.Parent = MainFrame
+Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 6)
+
+-- 內容容器 (用於縮小化隱藏)
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Size = UDim2.new(1, 0, 1, -35)
+ContentFrame.Position = UDim2.new(0, 0, 0, 35)
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.Parent = MainFrame
 
 -- 拖動功能
 local dragging, dragStart, startPos
-Frame.InputBegan:Connect(function(input)
+MainFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true; dragStart = input.Position; startPos = Frame.Position
+        dragging = true; dragStart = input.Position; startPos = MainFrame.Position
     end
 end)
 UserInputService.InputChanged:Connect(function(input)
     if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
         local delta = input.Position - dragStart
-        Frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
 end)
 UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
 
-local Content = Instance.new("Frame")
-Content.Size = UDim2.new(1, -20, 1, -85)
-Content.Position = UDim2.new(0, 10, 0, 45)
-Content.BackgroundTransparency = 1
-Content.Parent = Frame
-
-local UIListLayout = Instance.new("UIListLayout")
-UIListLayout.Padding = UDim.new(0, 8)
-UIListLayout.Parent = Content
-
-local AfkDisplay = Instance.new("TextLabel")
-AfkDisplay.Size = UDim2.new(1, -20, 0, 25)
-AfkDisplay.Position = UDim2.new(0.5, 0, 1, -30)
-AfkDisplay.AnchorPoint = Vector2.new(0.5, 0)
-AfkDisplay.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
-AfkDisplay.TextColor3 = Color3.fromRGB(200, 200, 200)
-AfkDisplay.TextSize = 11
-AfkDisplay.Font = Enum.Font.GothamMedium
-AfkDisplay.Text = "Idle: 00h 00m 00s"
-AfkDisplay.Parent = Frame
-Instance.new("UICorner", AfkDisplay).CornerRadius = UDim.new(0, 6)
-
--- ================== 開關組件工廠 ==================
-local function CreateToggle(name, id, keybindText)
-    local ToggleFrame = Instance.new("Frame")
-    ToggleFrame.Size = UDim2.new(1, 0, 0, 42)
-    ToggleFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
-    ToggleFrame.Parent = Content
-    Instance.new("UICorner", ToggleFrame).CornerRadius = UDim.new(0, 8)
-
-    local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(0.6, 0, 1, 0)
-    Label.Position = UDim2.new(0, 12, 0, 0)
-    Label.BackgroundTransparency = 1
-    Label.Text = name .. (keybindText and (" ["..keybindText.."]") or "")
-    Label.TextColor3 = Color3.new(1,1,1)
-    Label.TextSize = 13
-    Label.Font = Enum.Font.GothamSemibold
-    Label.TextXAlignment = Enum.TextXAlignment.Left
-    Label.Parent = ToggleFrame
-
-    local SwitchBG = Instance.new("Frame")
-    SwitchBG.Size = UDim2.new(0, 36, 0, 18)
-    SwitchBG.Position = UDim2.new(1, -48, 0.5, -9)
-    SwitchBG.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-    SwitchBG.Parent = ToggleFrame
-    Instance.new("UICorner", SwitchBG).CornerRadius = UDim.new(1, 0)
-
-    local SwitchDot = Instance.new("Frame")
-    SwitchDot.Size = UDim2.new(0, 14, 0, 14)
-    SwitchDot.Position = UDim2.new(0, 2, 0.5, -7)
-    SwitchDot.BackgroundColor3 = Color3.new(1,1,1)
-    SwitchDot.Parent = SwitchBG
-    Instance.new("UICorner", SwitchDot).CornerRadius = UDim.new(1, 0)
-
-    local function UpdateUI(state)
-        local tweenInfo = TweenInfo.new(0.2)
-        if state then
-            TweenService:Create(SwitchBG, tweenInfo, {BackgroundColor3 = Color3.fromRGB(80, 180, 100)}):Play()
-            TweenService:Create(SwitchDot, tweenInfo, {Position = UDim2.new(1, -16, 0.5, -7)}):Play()
-        else
-            TweenService:Create(SwitchBG, tweenInfo, {BackgroundColor3 = Color3.fromRGB(60, 60, 70)}):Play()
-            TweenService:Create(SwitchDot, tweenInfo, {Position = UDim2.new(0, 2, 0.5, -7)}):Play()
-        end
-    end
-
-    local function Toggle()
-        LogicState[id] = not LogicState[id]
-        
-        -- 特殊邏輯：自動購買狀態改變時，更新當前的 Prompt 狀態
-        if id == "AutoBuy" and currentPrompt then
-            if LogicState.AutoBuy then
-                currentPrompt.HoldDuration = 0
-            else
-                currentPrompt.HoldDuration = originalDurations[currentPrompt] or 0.5
-            end
-        end
-
-        UpdateUI(LogicState[id])
-        ShowNotice(name .. (LogicState[id] and " ON" or " OFF"))
-    end
-
-    ToggleFrame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then Toggle() end
-    end)
-
-    return Toggle
+-- 按鈕工廠
+local function CreateButton(name, pos, toggleKey)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.9, 0, 0, 40)
+    btn.Position = pos
+    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+    btn.Text = name .. ": OFF [" .. toggleKey .. "]"
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextSize = 12
+    btn.Parent = ContentFrame
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+    return btn
 end
 
--- 創建按鈕
-local toggleAntiAttack = CreateToggle("Anti Attack", "AntiAttack", "Q")
-local toggleAutoBuy = CreateToggle("Auto Buy", "AutoBuy", "R")
-local toggleAntiAFK = CreateToggle("Anti AFK", "AntiAFK", nil)
+local AntiBtn = CreateButton("Anti-Attack", UDim2.new(0.05, 0, 0.1, 0), "Q")
+local AutoBtn = CreateButton("Auto-Buy", UDim2.new(0.05, 0, 0.5, 0), "R")
 
--- ================== 快捷鍵與定時任務 ==================
+-- 更新函數
+local function UpdateAnti()
+    State.AntiAttack = not State.AntiAttack
+    AntiBtn.BackgroundColor3 = State.AntiAttack and Color3.fromRGB(80, 180, 100) or Color3.fromRGB(40, 40, 50)
+    AntiBtn.Text = "Anti-Attack: " .. (State.AntiAttack and "ON" or "OFF") .. " [Q]"
+    ShowNotice("Anti-Attack: " .. (State.AntiAttack and "開啟" or "關閉"))
+end
+
+local function UpdateAuto()
+    State.AutoBuy = not State.AutoBuy
+    AutoBtn.BackgroundColor3 = State.AutoBuy and Color3.fromRGB(60, 150, 255) or Color3.fromRGB(40, 40, 50)
+    AutoBtn.Text = "Auto-Buy: " .. (State.AutoBuy and "ON" or "OFF") .. " [R]"
+    ShowNotice("Auto-Buy: " .. (State.AutoBuy and "開啟" or "關閉"))
+end
+
+AntiBtn.MouseButton1Click:Connect(UpdateAnti)
+AutoBtn.MouseButton1Click:Connect(UpdateAuto)
+
+-- 縮小功能
+MinBtn.MouseButton1Click:Connect(function()
+    State.IsMinimized = not State.IsMinimized
+    local targetSize = State.IsMinimized and UDim2.new(0, 220, 0, 35) or UDim2.new(0, 220, 0, 160)
+    TweenService:Create(MainFrame, TweenInfo.new(0.3), {Size = targetSize}):Play()
+    MinBtn.Text = State.IsMinimized and "+" or "-"
+end)
+
+-- 關閉功能 (銷毀 GUI 且禁用快捷鍵)
+CloseBtn.MouseButton1Click:Connect(function()
+    ShowNotice("腳本已完全卸載")
+    ScreenGui:Destroy()
+end)
+
+-- 快捷鍵監聽 (增加判斷 ScreenGui 是否還存在)
 UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    lastInputTime = os.time()
-    
-    if input.KeyCode == Enum.KeyCode.Q then
-        toggleAntiAttack()
-    elseif input.KeyCode == Enum.KeyCode.R then
-        toggleAutoBuy()
-    end
+    if gpe or not ScreenGui.Parent then return end -- 如果 GUI 被毀掉，快捷鍵不再觸發
+    if input.KeyCode == Enum.KeyCode.Q then UpdateAnti()
+    elseif input.KeyCode == Enum.KeyCode.R then UpdateAuto() end
 end)
 
-RunService.Heartbeat:Connect(function()
-    if LogicState.AntiAttack then
-        local char = LocalPlayer.Character
-        if char and char:FindFirstChild("HumanoidRootPart") then
-            char.HumanoidRootPart.AssemblyLinearVelocity = Vector3.zero
-        end
-    end
-    afkTimeValue = os.time() - lastInputTime
-    AfkDisplay.Text = "Idle: " .. formatTime(afkTimeValue)
-end)
-
-ShowNotice("Mini 整合介面載入完畢！")
+ShowNotice("綜合腳本已載入 | Q & R")
